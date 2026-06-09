@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useV3rtex } from "@/lib/v3rtex/context";
-import { Card, SectionHeader, Skeleton, ErrorCard, GradeBadge, gradeColor, scoreToGrade } from "./ui";
+import { Card, SectionHeader, Skeleton, ErrorCard, GradeBadge, gradeColor, scoreToGrade } from "../ui";
 import type { GraphEdge, GraphNode } from "@/lib/v3rtex/api";
 
 export function Overview() {
