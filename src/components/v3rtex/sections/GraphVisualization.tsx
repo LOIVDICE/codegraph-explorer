@@ -93,31 +93,34 @@ export function GraphVisualization() {
       <Card className="relative overflow-hidden" >
         <div ref={wrapRef} className="h-[calc(100vh-200px)] bg-[#fbfbf8] relative">
           {data.nodes.length > 0 && (
-            <ForceGraph2D
-              ref={ref as never}
-              width={size.w}
-              height={size.h}
-              graphData={data as { nodes: GraphNode[]; links: GraphEdge[] }}
-              nodeId="id"
-              nodeLabel={(n: GraphNode) => `${n.name ?? n.id} (${n.type})`}
-              nodeVal={nodeSize}
-              nodeColor={nodeColor}
-              linkColor={(l: GraphEdge) => {
-                if (selected) {
-                  const sId = typeof l.source === "string" ? l.source : (l.source as { id: string }).id;
-                  const tId = typeof l.target === "string" ? l.target : (l.target as { id: string }).id;
-                  if (sId !== selected.id && tId !== selected.id) return "rgba(200,200,200,0.15)";
-                }
-                return EDGE_COLOR[l.type] ?? "#999";
-              }}
-              linkDirectionalArrowLength={3}
-              linkDirectionalArrowRelPos={1}
-              linkWidth={(l: GraphEdge) => hoverId && (l.source === hoverId || l.target === hoverId) ? 1.5 : 0.5}
-              onNodeClick={(n: GraphNode) => setSelected(n)}
-              onNodeHover={(n: GraphNode | null) => setHoverId(n?.id ?? null)}
-              onBackgroundClick={() => setSelected(null)}
-              cooldownTicks={100}
-            />
+            <Suspense fallback={null}>
+              {/* eslint-disable @typescript-eslint/no-explicit-any */}
+              <ForceGraph2D
+                ref={ref as never}
+                width={size.w}
+                height={size.h}
+                graphData={data as any}
+                nodeId="id"
+                nodeLabel={((n: any) => `${n.name ?? n.id} (${n.type})`) as any}
+                nodeVal={nodeSize as any}
+                nodeColor={nodeColor as any}
+                linkColor={((l: any) => {
+                  if (selected) {
+                    const sId = typeof l.source === "string" ? l.source : l.source?.id;
+                    const tId = typeof l.target === "string" ? l.target : l.target?.id;
+                    if (sId !== selected.id && tId !== selected.id) return "rgba(200,200,200,0.15)";
+                  }
+                  return EDGE_COLOR[l.type] ?? "#999";
+                }) as any}
+                linkDirectionalArrowLength={3}
+                linkDirectionalArrowRelPos={1}
+                linkWidth={((l: any) => hoverId && (l.source?.id === hoverId || l.target?.id === hoverId || l.source === hoverId || l.target === hoverId) ? 1.5 : 0.5) as any}
+                onNodeClick={((n: any) => setSelected(n)) as any}
+                onNodeHover={((n: any) => setHoverId(n?.id ?? null)) as any}
+                onBackgroundClick={() => setSelected(null)}
+                cooldownTicks={100}
+              />
+            </Suspense>
           )}
 
           {/* Search overlay */}
