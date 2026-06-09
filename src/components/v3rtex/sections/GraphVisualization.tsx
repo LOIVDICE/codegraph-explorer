@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState, useEffect } from "react";
-import ForceGraph2D from "react-force-graph-2d";
+import { lazy, Suspense, useMemo, useRef, useState, useEffect } from "react";
+const ForceGraph2D = lazy(() => import("react-force-graph-2d").then((m) => ({ default: m.default })));
 import { useV3rtex } from "@/lib/v3rtex/context";
 import { Card, SectionHeader, Skeleton, ErrorCard, NodeTypeBadge, GradeBadge, scoreToGrade, gradeColor } from "../ui";
 import type { GraphEdge, GraphNode } from "@/lib/v3rtex/api";
