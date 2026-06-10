@@ -1,7 +1,9 @@
 import { lazy, Suspense, useMemo, useRef, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 const ForceGraph2D = lazy(() => import("react-force-graph-2d").then((m) => ({ default: m.default })));
 import { useV3rtex } from "@/lib/v3rtex/context";
 import { Card, SectionHeader, Skeleton, ErrorCard, NodeTypeBadge, GradeBadge, scoreToGrade, gradeColor } from "../ui";
+import { useSidebarSlot } from "../SidebarPanelContext";
 import type { GraphEdge, GraphNode } from "@/lib/v3rtex/api";
 
 const EDGE_TYPES = ["CALLS", "IMPORTS", "DEFINES", "INHERITS", "CONTAINS"];
