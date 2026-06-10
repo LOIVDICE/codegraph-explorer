@@ -126,13 +126,17 @@ export function GraphVisualization() {
             </Suspense>
           )}
 
-          {/* Search overlay */}
+          {/* Search overlay (kept on canvas) */}
           <div className="absolute top-3 left-3 bg-[var(--surface)] border border-border rounded shadow-sm p-2 flex gap-2 items-center">
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search node…" className="px-2 py-1 text-xs border border-border rounded bg-white w-56" />
           </div>
+        </div>
+      </Card>
 
-          {/* Controls overlay */}
-          <div className="absolute top-3 right-3 bg-[var(--surface)] border border-border rounded shadow-sm p-3 w-64 text-xs space-y-3">
+      {slot && createPortal(
+        <div className="flex flex-col h-full text-xs">
+          {/* Controls */}
+          <div className="p-3 border-b border-border space-y-3">
             <div>
               <div className="font-semibold mb-1.5">Mode</div>
               <div className="flex gap-1">
@@ -163,24 +167,28 @@ export function GraphVisualization() {
             <button onClick={() => ref.current?.zoomToFit(400, 50)} className="w-full px-2 py-1 border border-border rounded hover:bg-muted">Reset Camera</button>
           </div>
 
-          {/* Selected info */}
-          {selected && (
-            <div className="absolute bottom-3 left-3 bg-[var(--surface)] border border-border rounded shadow-sm p-3 w-80 text-xs">
-              <div className="flex items-center justify-between mb-2">
-                <div className="font-semibold mono truncate">{selected.name ?? selected.id}</div>
-                <button onClick={() => setSelected(null)} className="text-muted-foreground hover:text-foreground">×</button>
-              </div>
+          {/* Selected node details */}
+          <div className="p-3 border-b border-border">
+            <div className="font-semibold mb-1.5">Node Details</div>
+            {selected ? (
               <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold mono truncate">{selected.name ?? selected.id}</div>
+                  <button onClick={() => setSelected(null)} className="text-muted-foreground hover:text-foreground">×</button>
+                </div>
                 <Row k="Type" v={<NodeTypeBadge type={selected.type} />} />
                 <Row k="Grade" v={<GradeBadge grade={selected.grade ?? scoreToGrade(selected.health_score)} />} />
                 <Row k="Aff" v={String(selected.afferent_coupling ?? selected.in_degree ?? 0)} />
                 <Row k="Eff" v={String(selected.efferent_coupling ?? selected.out_degree ?? 0)} />
-                {selected.file_path && <Row k="File" v={<span className="mono">{selected.file_path}</span>} />}
+                {selected.file_path && <Row k="File" v={<span className="mono break-all">{selected.file_path}</span>} />}
               </div>
-            </div>
-          )}
-        </div>
-      </Card>
+            ) : (
+              <div className="text-muted-foreground italic">Click a node in the graph to view its details.</div>
+            )}
+          </div>
+        </div>,
+        slot
+      )}
     </Wrap>
   );
 }
