@@ -1,7 +1,7 @@
 import { useV3rtex } from "@/lib/v3rtex/context";
 import {
   LayoutDashboard, FolderTree, FileCode2, Link2, PhoneCall,
-  Database, Gauge, AlertTriangle, Network, TerminalSquare, Activity,
+  Database, Gauge, AlertTriangle, Network, TerminalSquare, Activity, ArrowLeft,
 } from "lucide-react";
 
 export type SectionKey =
@@ -21,10 +21,24 @@ const nav: { key: SectionKey; label: string; icon: typeof LayoutDashboard }[] = 
   { key: "api", label: "API Tester", icon: TerminalSquare },
 ];
 
-export function Sidebar({ active, onChange }: { active: SectionKey; onChange: (k: SectionKey) => void }) {
+export const SECTIONS_WITH_PANEL = new Set<SectionKey>(["ast", "viz"]);
+const PANEL_TITLES: Partial<Record<SectionKey, string>> = {
+  ast: "Files",
+  viz: "Graph Controls",
+};
+
+export function Sidebar({
+  active, panelOpen, onNavClick, onClosePanel, setSlotEl,
+}: {
+  active: SectionKey;
+  panelOpen: boolean;
+  onNavClick: (k: SectionKey) => void;
+  onClosePanel: () => void;
+  setSlotEl: (el: HTMLDivElement | null) => void;
+}) {
   const { status, retry } = useV3rtex();
   return (
-    <aside className="w-64 bg-[var(--surface)] border-r border-border h-screen sticky top-0 flex flex-col">
+    <aside className="w-64 bg-[var(--surface)] border-r border-border h-screen sticky top-0 flex flex-col overflow-hidden">
       <div className="p-5 border-b border-border">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded bg-foreground text-background flex items-center justify-center">
@@ -36,24 +50,49 @@ export function Sidebar({ active, onChange }: { active: SectionKey; onChange: (k
           </div>
         </div>
       </div>
-      <nav className="flex-1 p-3 overflow-y-auto">
-        {nav.map((n) => {
-          const Icon = n.icon;
-          const isActive = active === n.key;
-          return (
-            <button
-              key={n.key}
-              onClick={() => onChange(n.key)}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm mb-0.5 transition-colors text-left ${
-                isActive ? "bg-foreground text-background font-medium" : "text-zinc-700 hover:bg-muted"
-              }`}
-            >
-              <Icon size={15} />
-              {n.label}
-            </button>
-          );
-        })}
-      </nav>
+
+      <div className="flex-1 relative overflow-hidden">
+        <div
+          className="absolute inset-0 flex transition-transform duration-300 ease-out"
+          style={{ transform: panelOpen ? "translateX(-100%)" : "translateX(0)", width: "200%" }}
+        >
+          {/* Nav view */}
+          <nav className="w-1/2 shrink-0 p-3 overflow-y-auto">
+            {nav.map((n) => {
+              const Icon = n.icon;
+              const isActive = active === n.key;
+              return (
+                <button
+                  key={n.key}
+                  onClick={() => onNavClick(n.key)}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm mb-0.5 transition-colors text-left ${
+                    isActive ? "bg-foreground text-background font-medium" : "text-zinc-700 hover:bg-muted"
+                  }`}
+                >
+                  <Icon size={15} />
+                  {n.label}
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Panel view */}
+          <div className="w-1/2 shrink-0 flex flex-col overflow-hidden">
+            <div className="flex items-center gap-2 p-3 border-b border-border">
+              <button
+                onClick={onClosePanel}
+                className="p-1 rounded hover:bg-muted"
+                title="Back to menu"
+              >
+                <ArrowLeft size={14} />
+              </button>
+              <span className="text-sm font-semibold">{PANEL_TITLES[active] ?? ""}</span>
+            </div>
+            <div ref={setSlotEl} className="flex-1 overflow-auto" />
+          </div>
+        </div>
+      </div>
+
       <div className="p-4 border-t border-border">
         <div className="flex items-center gap-2">
           <span className={`w-2 h-2 rounded-full ${

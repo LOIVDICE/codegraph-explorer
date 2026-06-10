@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { V3rtexProvider } from "@/lib/v3rtex/context";
-import { Sidebar, type SectionKey } from "@/components/v3rtex/Sidebar";
+import { Sidebar, SECTIONS_WITH_PANEL, type SectionKey } from "@/components/v3rtex/Sidebar";
+import { SidebarSlotContext } from "@/components/v3rtex/SidebarPanelContext";
 import { Overview } from "@/components/v3rtex/sections/Overview";
 import { FileWalker } from "@/components/v3rtex/sections/FileWalker";
 import { ASTExtraction } from "@/components/v3rtex/sections/ASTExtraction";
@@ -30,23 +31,44 @@ export const Route = createFileRoute("/")({
 
 function Dashboard() {
   const [section, setSection] = useState<SectionKey>("overview");
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [slotEl, setSlotEl] = useState<HTMLDivElement | null>(null);
+
+  const handleNav = (k: SectionKey) => {
+    if (k === section) {
+      // Same section clicked: toggle panel if available; otherwise no-op (avoid reload).
+      if (SECTIONS_WITH_PANEL.has(k)) setPanelOpen((o) => !o);
+      return;
+    }
+    setSection(k);
+    setPanelOpen(SECTIONS_WITH_PANEL.has(k));
+  };
+
   return (
     <V3rtexProvider>
-      <div className="flex min-h-screen bg-background text-foreground">
-        <Sidebar active={section} onChange={setSection} />
-        <main className="flex-1 p-8 overflow-x-hidden">
-          {section === "overview" && <Overview />}
-          {section === "files" && <FileWalker />}
-          {section === "ast" && <ASTExtraction />}
-          {section === "symbols" && <SymbolResolver />}
-          {section === "calls" && <CallResolver />}
-          {section === "graph" && <GraphInspector />}
-          {section === "complexity" && <Complexity />}
-          {section === "antipatterns" && <AntiPatterns />}
-          {section === "viz" && <GraphVisualization />}
-          {section === "api" && <APITester />}
-        </main>
-      </div>
+      <SidebarSlotContext.Provider value={slotEl}>
+        <div className="flex min-h-screen bg-background text-foreground">
+          <Sidebar
+            active={section}
+            panelOpen={panelOpen}
+            onNavClick={handleNav}
+            onClosePanel={() => setPanelOpen(false)}
+            setSlotEl={setSlotEl}
+          />
+          <main className="flex-1 p-8 overflow-x-hidden">
+            {section === "overview" && <Overview />}
+            {section === "files" && <FileWalker />}
+            {section === "ast" && <ASTExtraction />}
+            {section === "symbols" && <SymbolResolver />}
+            {section === "calls" && <CallResolver />}
+            {section === "graph" && <GraphInspector />}
+            {section === "complexity" && <Complexity />}
+            {section === "antipatterns" && <AntiPatterns />}
+            {section === "viz" && <GraphVisualization />}
+            {section === "api" && <APITester />}
+          </main>
+        </div>
+      </SidebarSlotContext.Provider>
     </V3rtexProvider>
   );
 }
