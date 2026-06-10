@@ -15,6 +15,7 @@ const EDGE_COLOR: Record<string, string> = {
 
 export function GraphVisualization() {
   const { graph, graphLoading, graphError, refreshGraph, graphUpdated } = useV3rtex();
+  const slot = useSidebarSlot();
   const ref = useRef<{ centerAt: (x: number, y: number, ms?: number) => void; zoom: (z: number, ms?: number) => void; zoomToFit: (ms?: number, pad?: number) => void } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
