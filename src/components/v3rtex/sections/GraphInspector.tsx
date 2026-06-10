@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useV3rtex } from "@/lib/v3rtex/context";
 import { Card, SectionHeader, Skeleton, ErrorCard, NodeTypeBadge, EdgeTypeBadge, GradeBadge, Badge, scoreToGrade, EmptyState } from "../ui";
 import type { GraphEdge, GraphNode } from "@/lib/v3rtex/api";
-import { X } from "lucide-react";
+import { X, ArrowLeft } from "lucide-react";
 
 type SortKey = "id" | "name" | "type" | "grade" | "health_score" | "afferent" | "efferent";
 
@@ -160,7 +160,12 @@ export function GraphInspector() {
       {detail && (
         <div className="fixed inset-y-0 right-0 w-[480px] bg-[var(--surface)] border-l border-border shadow-xl z-50 overflow-auto">
           <div className="p-4 border-b border-border flex items-center justify-between">
-            <div className="text-sm font-semibold truncate mr-2">{detail.name ?? detail.id}</div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setDetail(null)} className="p-1 hover:bg-muted rounded" title="Back to list">
+                <ArrowLeft size={16} />
+              </button>
+              <div className="text-sm font-semibold truncate mr-2">{detail.name ?? detail.id}</div>
+            </div>
             <button onClick={() => setDetail(null)} className="p-1 hover:bg-muted rounded"><X size={16} /></button>
           </div>
           <div className="p-4 space-y-3">
