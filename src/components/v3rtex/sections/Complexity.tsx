@@ -3,7 +3,7 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { useV3rtex } from "@/lib/v3rtex/context";
 import { Card, SectionHeader, Skeleton, ErrorCard, GradeBadge, gradeColor, scoreToGrade, EmptyState } from "../ui";
 import type { GraphEdge, GraphNode } from "@/lib/v3rtex/api";
-import { X } from "lucide-react";
+import { X, ArrowLeft } from "lucide-react";
 
 export function Complexity() {
   const { graph, graphLoading, graphError, refreshGraph, graphUpdated } = useV3rtex();
@@ -134,7 +134,12 @@ function FunctionDetail({ node, edges, onClose }: { node: GraphNode; edges: Grap
   return (
     <div className="fixed inset-y-0 right-0 w-[520px] bg-[var(--surface)] border-l border-border shadow-xl z-50 overflow-auto">
       <div className="p-4 border-b border-border flex items-center justify-between">
-        <div className="text-sm font-semibold mono truncate">{node.name ?? node.id}</div>
+        <div className="flex items-center gap-2">
+          <button onClick={onClose} className="p-1 hover:bg-muted rounded" title="Back to list">
+            <ArrowLeft size={16} />
+          </button>
+          <div className="text-sm font-semibold mono truncate">{node.name ?? node.id}</div>
+        </div>
         <button onClick={onClose} className="p-1 hover:bg-muted rounded"><X size={16} /></button>
       </div>
       <div className="p-4 space-y-4 text-xs">
