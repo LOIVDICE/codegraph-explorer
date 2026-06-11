@@ -1,35 +1,25 @@
 import { useMemo, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { useV3rtex } from "@/lib/v3rtex/context";
-import { Card, SectionHeader, Skeleton, ErrorCard, GradeBadge, gradeColor, scoreToGrade, EmptyState } from "../ui";
+import { Card, SectionHeader, Skeleton, ErrorCard, GradeBadge, gradeColor, scoreToGrade } from "../ui";
+import { DataTable, type Column } from "../DataTable";
 import type { GraphEdge, GraphNode } from "@/lib/v3rtex/api";
 import { X } from "lucide-react";
 
 export function Complexity() {
   const { graph, graphLoading, graphError, refreshGraph, graphUpdated } = useV3rtex();
-  const [filters, setFilters] = useState({ grade: "all", file: "", q: "" });
-  const [sortBy, setSortBy] = useState<"cc" | "mi" | "health" | "name">("cc");
+  const [filters, setFilters] = useState({ grade: "all", file: "" });
   const [detail, setDetail] = useState<GraphNode | null>(null);
 
   const fns = useMemo(() => (graph?.nodes ?? []).filter((n) => n.type === "FUNCTION"), [graph]);
   const edges = (graph?.edges ?? graph?.links ?? []) as GraphEdge[];
 
-  const filtered = useMemo(() => {
-    const out = fns.filter((f) => {
-      const g = (f.grade ?? scoreToGrade(f.health_score)).toUpperCase();
-      if (filters.grade !== "all" && g !== filters.grade) return false;
-      if (filters.file && !(f.file_path ?? "").toLowerCase().includes(filters.file.toLowerCase())) return false;
-      if (filters.q && !(f.name ?? f.id).toLowerCase().includes(filters.q.toLowerCase())) return false;
-      return true;
-    });
-    out.sort((a, b) => {
-      if (sortBy === "name") return (a.name ?? "").localeCompare(b.name ?? "");
-      if (sortBy === "mi") return (b.maintainability_index ?? 0) - (a.maintainability_index ?? 0);
-      if (sortBy === "health") return (b.health_score ?? 0) - (a.health_score ?? 0);
-      return (b.cyclomatic_complexity ?? 0) - (a.cyclomatic_complexity ?? 0);
-    });
-    return out;
-  }, [fns, filters, sortBy]);
+  const filtered = useMemo(() => fns.filter((f) => {
+    const g = (f.grade ?? scoreToGrade(f.health_score)).toUpperCase();
+    if (filters.grade !== "all" && g !== filters.grade) return false;
+    if (filters.file && !(f.file_path ?? "").toLowerCase().includes(filters.file.toLowerCase())) return false;
+    return true;
+  }), [fns, filters]);
 
   const distribution = useMemo(() => {
     const m: Record<string, number> = { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0 };
@@ -67,58 +57,28 @@ export function Complexity() {
 
         <Card className="p-4">
           <div className="text-sm font-semibold mb-3">Filters</div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <select value={filters.grade} onChange={(e) => setFilters({ ...filters, grade: e.target.value })} className="px-2 py-1.5 text-xs border border-border rounded bg-[var(--surface)]">
               <option value="all">All Grades</option>{["A", "B", "C", "D", "E", "F"].map((g) => <option key={g}>{g}</option>)}
             </select>
             <input value={filters.file} onChange={(e) => setFilters({ ...filters, file: e.target.value })} placeholder="File path…" className="px-2 py-1.5 text-xs border border-border rounded bg-[var(--surface)]" />
-            <input value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} placeholder="Function name…" className="px-2 py-1.5 text-xs border border-border rounded bg-[var(--surface)]" />
           </div>
-          <div className="mt-3 text-xs text-muted-foreground">Showing {filtered.length} of {fns.length} functions</div>
+          <div className="mt-3 text-xs text-muted-foreground">{fns.length} functions total</div>
         </Card>
       </div>
 
-      {filtered.length === 0 ? <EmptyState title="No functions match." /> : (
-        <Card>
-          <div className="overflow-auto max-h-[60vh]">
-            <table className="w-full text-sm">
-              <thead className="text-xs text-muted-foreground border-b border-border sticky top-0 bg-[var(--surface)]">
-                <tr>
-                  <th onClick={() => setSortBy("name")} className="text-left p-2 cursor-pointer">Function</th>
-                  <th className="text-left">File</th>
-                  <th onClick={() => setSortBy("cc")} className="text-right cursor-pointer">CC</th>
-                  <th onClick={() => setSortBy("mi")} className="text-right cursor-pointer">MI</th>
-                  <th onClick={() => setSortBy("health")} className="text-left cursor-pointer w-40">Health</th>
-                  <th className="text-center">Grade</th>
-                  <th className="text-right">Aff</th>
-                  <th className="text-right pr-3">Eff</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((f) => {
-                  const g = (f.grade ?? scoreToGrade(f.health_score)).toUpperCase();
-                  return (
-                    <tr key={f.id} onClick={() => setDetail(f)} className="border-b border-border last:border-0 hover:bg-muted/60 cursor-pointer">
-                      <td className="p-2 mono text-xs">{f.name ?? f.id}</td>
-                      <td className="mono text-xs text-muted-foreground truncate max-w-[260px]">{f.file_path ?? "—"}</td>
-                      <td className="text-right tabular-nums" style={{ color: gradeColor(g) }}>{f.cyclomatic_complexity ?? "—"}</td>
-                      <td className="text-right tabular-nums">{f.maintainability_index?.toFixed(1) ?? "—"}</td>
-                      <td>
-                        <div className="h-2 bg-muted rounded-full overflow-hidden w-32">
-                          <div className="h-full" style={{ width: `${(f.health_score ?? 0) * 100}%`, background: gradeColor(g) }} />
-                        </div>
-                      </td>
-                      <td className="text-center"><GradeBadge grade={g} size="lg" /></td>
-                      <td className="text-right tabular-nums">{f.afferent_coupling ?? f.in_degree ?? 0}</td>
-                      <td className="text-right pr-3 tabular-nums">{f.efferent_coupling ?? f.out_degree ?? 0}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+      <Card className="p-4">
+        <DataTable
+          rows={filtered}
+          rowKey={(f) => f.id}
+          maxHeight="60vh"
+          searchPlaceholder="Search function name or ID…"
+          emptyTitle="No functions match."
+          onRowClick={(f) => setDetail(f)}
+          initialSort={{ columnId: "cc", dir: "desc" }}
+          columns={fnCols}
+        />
+      </Card>
 
       {detail && (
         <FunctionDetail node={detail} edges={edges} onClose={() => setDetail(null)} />
@@ -126,6 +86,23 @@ export function Complexity() {
     </Wrap>
   );
 }
+
+const gradeOf = (f: GraphNode) => (f.grade ?? scoreToGrade(f.health_score)).toUpperCase();
+
+const fnCols: Column<GraphNode>[] = [
+  { id: "name", header: "Function", cellClassName: "mono text-xs", sortValue: (f) => f.name ?? f.id, searchText: (f) => `${f.name ?? ""} ${f.id}`, cell: (f) => f.name ?? f.id },
+  { id: "file", header: "File", cellClassName: "mono text-xs text-muted-foreground", searchText: (f) => f.file_path ?? "", sortValue: (f) => f.file_path ?? "", cell: (f) => <span className="truncate inline-block max-w-[260px] align-bottom">{f.file_path ?? "—"}</span> },
+  { id: "cc", header: "CC", headerClassName: "text-right", cellClassName: "text-right tabular-nums", sortValue: (f) => f.cyclomatic_complexity ?? -1, cell: (f) => <span style={{ color: gradeColor(gradeOf(f)) }}>{f.cyclomatic_complexity ?? "—"}</span> },
+  { id: "mi", header: "MI", headerClassName: "text-right", cellClassName: "text-right tabular-nums", sortValue: (f) => f.maintainability_index ?? -1, cell: (f) => f.maintainability_index?.toFixed(1) ?? "—" },
+  { id: "health", header: "Health", sortValue: (f) => f.health_score ?? -1, cell: (f) => (
+    <div className="h-2 bg-muted rounded-full overflow-hidden w-32">
+      <div className="h-full" style={{ width: `${(f.health_score ?? 0) * 100}%`, background: gradeColor(gradeOf(f)) }} />
+    </div>
+  ) },
+  { id: "grade", header: "Grade", headerClassName: "text-center", cellClassName: "text-center", sortValue: (f) => gradeOf(f), cell: (f) => <GradeBadge grade={gradeOf(f)} size="lg" /> },
+  { id: "aff", header: "Aff", headerClassName: "text-right", cellClassName: "text-right tabular-nums", sortValue: (f) => f.afferent_coupling ?? f.in_degree ?? 0, cell: (f) => f.afferent_coupling ?? f.in_degree ?? 0 },
+  { id: "eff", header: "Eff", headerClassName: "text-right", cellClassName: "text-right tabular-nums", sortValue: (f) => f.efferent_coupling ?? f.out_degree ?? 0, cell: (f) => f.efferent_coupling ?? f.out_degree ?? 0 },
+];
 
 function FunctionDetail({ node, edges, onClose }: { node: GraphNode; edges: GraphEdge[]; onClose: () => void }) {
   const callsIn = edges.filter((e) => e.type === "CALLS" && e.target === node.id);

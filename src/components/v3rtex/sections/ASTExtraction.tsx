@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { useV3rtex } from "@/lib/v3rtex/context";
-import { getNode, type GraphNode } from "@/lib/v3rtex/api";
-import { Card, SectionHeader, Skeleton, ErrorCard, Badge, EmptyState } from "../ui";
+import { getFile, parseMeta, type ApiAstNode, type ApiFileDetail } from "@/lib/v3rtex/api";
+import { Card, SectionHeader, Skeleton, ErrorCard, Badge } from "../ui";
+import { DataTable, type Column } from "../DataTable";
 
 const TABS = ["Functions", "Classes", "Imports", "Variables", "Calls"] as const;
 type Tab = typeof TABS[number];
 
 export function ASTExtraction() {
-  const { graph, graphLoading, graphError, refreshGraph, graphUpdated } = useV3rtex();
-  const files = useMemo(() => (graph?.nodes ?? []).filter((n) => n.type === "FILE"), [graph]);
+  const { files: filesRes, refreshAll } = useV3rtex();
+  const files = useMemo(() => filesRes.data ?? [], [filesRes.data]);
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("Functions");
-  const [detail, setDetail] = useState<(GraphNode & { children?: GraphNode[] }) | null>(null);
+  const [detail, setDetail] = useState<ApiFileDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -21,34 +22,27 @@ export function ASTExtraction() {
   useEffect(() => {
     if (!selected) return;
     setLoading(true); setErr(null);
-    getNode(selected).then((r) => {
+    getFile(selected).then((r) => {
       if (r.status >= 400) throw new Error(`HTTP ${r.status}`);
       setDetail(r.data);
-    }).catch((e) => setErr(e.message ?? String(e))).finally(() => setLoading(false));
+    }).catch((e) => setErr((e as Error).message ?? String(e))).finally(() => setLoading(false));
   }, [selected]);
 
-  // Fallback: derive children from graph if endpoint doesn't return them
-  const children = useMemo<GraphNode[]>(() => {
-    if (detail?.children?.length) return detail.children;
-    if (!selected) return [];
-    const all = graph?.nodes ?? [];
-    return all.filter((n) => n.parent_id === selected || (n.file_path && detail && n.file_path === detail.file_path && n.id !== selected));
-  }, [detail, selected, graph]);
+  const children = useMemo<ApiAstNode[]>(() => detail?.nodes ?? [], [detail]);
 
-  const byType = (t: string) => children.filter((c) => c.type === t);
-  const fns = byType("FUNCTION");
-  const cls = byType("CLASS");
-  const imps = children.filter((c) => c.type === "IMPORT" || (c as { kind?: string }).kind === "import" || c.module);
-  const vars = byType("VARIABLE");
-  const calls = children.filter((c) => c.type === "CALL" || c.callee_name);
+  const fns = children.filter((c) => c.node_type === "function_definition");
+  const cls = children.filter((c) => c.node_type === "class_definition");
+  const imps = children.filter((c) => c.category === "imports");
+  const vars = children.filter((c) => c.category === "variables");
+  const calls = children.filter((c) => c.node_type === "call");
 
-  const filteredFiles = files.filter((f) => !q || (f.file_path ?? "").toLowerCase().includes(q.toLowerCase()));
+  const filteredFiles = files.filter((f) => !q || (f.relative_path ?? "").toLowerCase().includes(q.toLowerCase()));
 
-  if (graphLoading && !graph) return <Wrap onR={refreshGraph}><Skeleton rows={10} /></Wrap>;
-  if (graphError) return <Wrap onR={refreshGraph}><ErrorCard message={graphError} onRetry={refreshGraph} /></Wrap>;
+  if (filesRes.loading && !filesRes.data) return <Wrap onR={refreshAll}><Skeleton rows={10} /></Wrap>;
+  if (filesRes.error) return <Wrap onR={refreshAll}><ErrorCard message={filesRes.error} onRetry={refreshAll} /></Wrap>;
 
   return (
-    <Wrap onR={refreshGraph} ts={graphUpdated}>
+    <Wrap onR={refreshAll} ts={filesRes.updated}>
       <div className="grid grid-cols-[300px_1fr] gap-4 h-[calc(100vh-180px)]">
         <Card className="flex flex-col overflow-hidden">
           <div className="p-3 border-b border-border">
@@ -57,7 +51,7 @@ export function ASTExtraction() {
           <div className="flex-1 overflow-auto">
             {filteredFiles.map((f) => (
               <button key={f.id} onClick={() => setSelected(f.id)} className={`w-full text-left px-3 py-2 text-xs mono border-b border-border hover:bg-muted ${selected === f.id ? "bg-muted font-semibold" : ""}`}>
-                {f.file_path ?? f.name}
+                {f.relative_path ?? f.name}
               </button>
             ))}
           </div>
@@ -79,39 +73,11 @@ export function ASTExtraction() {
           <div className="flex-1 overflow-auto p-4">
             {loading ? <Skeleton rows={6} /> : err ? <ErrorCard message={err} /> : (
               <>
-                {tab === "Functions" && <Table headers={["Name", "Params", "Start", "End", "Flags", "Decorators", "Docstring"]} rows={fns.map((f) => [
-                  <span className="mono text-xs">{f.name ?? f.id}</span>,
-                  <span className="mono text-xs text-muted-foreground">{(f.params ?? []).join(", ")}</span>,
-                  f.start_line ?? "—", f.end_line ?? "—",
-                  <span className="space-x-1">{f.is_async && <Badge color="blue">async</Badge>}{f.is_generator && <Badge color="violet">gen</Badge>}</span>,
-                  <span className="space-x-1">{(f.decorators ?? []).map((d, i) => <Badge key={i} color="amber">{d}</Badge>)}</span>,
-                  <span title={f.docstring} className="text-xs text-muted-foreground line-clamp-1">{(f.docstring ?? "").slice(0, 60)}</span>,
-                ])} />}
-                {tab === "Classes" && <Table headers={["Name", "Bases", "Methods", "Start", "End", "Decorators"]} rows={cls.map((c) => [
-                  <span className="mono text-xs">{c.name}</span>,
-                  <span className="space-x-1">{(c.base_classes ?? []).map((b, i) => <Badge key={i} color="violet">{b}</Badge>)}</span>,
-                  (c as { methods?: unknown[] }).methods?.length ?? "—",
-                  c.start_line ?? "—", c.end_line ?? "—",
-                  <span className="space-x-1">{(c.decorators ?? []).map((d, i) => <Badge key={i} color="amber">{d}</Badge>)}</span>,
-                ])} />}
-                {tab === "Imports" && <Table headers={["Module", "Symbols", "Alias", "Type"]} rows={imps.map((i) => [
-                  <span className="mono text-xs">{i.module ?? "—"}</span>,
-                  <span className="mono text-xs">{(i.symbols ?? []).join(", ")}</span>,
-                  <span className="mono text-xs">{i.alias ?? "—"}</span>,
-                  <Badge color="blue">{(i.import_type ?? "SIMPLE").toString().toUpperCase()}</Badge>,
-                ])} />}
-                {tab === "Variables" && <Table headers={["Name", "Type", "Line", "Const"]} rows={vars.map((v) => [
-                  <span className="mono text-xs">{v.name}</span>,
-                  <span className="mono text-xs text-muted-foreground">{v.inferred_type ?? "—"}</span>,
-                  v.line_number ?? v.start_line ?? "—",
-                  v.is_constant ? <Badge color="green">const</Badge> : "—",
-                ])} />}
-                {tab === "Calls" && <Table headers={["Callee", "Caller", "Line", "Resolved"]} rows={calls.map((c) => [
-                  <span className="mono text-xs">{c.callee_name ?? c.raw_callee ?? "—"}</span>,
-                  <span className="mono text-xs">{c.caller ?? "—"}</span>,
-                  c.line_number ?? "—",
-                  c.resolution ? <Badge color="green">RESOLVED</Badge> : <Badge color="amber">UNRESOLVED</Badge>,
-                ])} />}
+                {tab === "Functions" && <DataTable rows={fns} rowKey={(n) => n.id} maxHeight="calc(100vh - 360px)" searchPlaceholder="Search functions…" emptyTitle="No functions in this file." columns={fnCols} />}
+                {tab === "Classes" && <DataTable rows={cls} rowKey={(n) => n.id} maxHeight="calc(100vh - 360px)" searchPlaceholder="Search classes…" emptyTitle="No classes in this file." columns={clsCols} />}
+                {tab === "Imports" && <DataTable rows={imps} rowKey={(n) => n.id} maxHeight="calc(100vh - 360px)" searchPlaceholder="Search imports…" emptyTitle="No imports in this file." columns={impCols} />}
+                {tab === "Variables" && <DataTable rows={vars} rowKey={(n) => n.id} maxHeight="calc(100vh - 360px)" searchPlaceholder="Search variables…" emptyTitle="No variables in this file." columns={varCols} />}
+                {tab === "Calls" && <DataTable rows={calls} rowKey={(n) => n.id} maxHeight="calc(100vh - 360px)" searchPlaceholder="Search calls…" emptyTitle="No calls in this file." columns={callCols} />}
               </>
             )}
           </div>
@@ -121,22 +87,47 @@ export function ASTExtraction() {
   );
 }
 
-function Table({ headers, rows }: { headers: string[]; rows: React.ReactNode[][] }) {
-  if (!rows.length) return <EmptyState title="No items to display in this category." />;
-  return (
-    <table className="w-full text-sm">
-      <thead className="text-xs text-muted-foreground border-b border-border">
-        <tr>{headers.map((h) => <th key={h} className="text-left py-2 pr-3">{h}</th>)}</tr>
-      </thead>
-      <tbody>{rows.map((r, i) => (
-        <tr key={i} className="border-b border-border last:border-0">
-          {r.map((c, j) => <td key={j} className="py-2 pr-3">{c}</td>)}
-        </tr>
-      ))}</tbody>
-    </table>
-  );
-}
+const fnCols: Column<ApiAstNode>[] = [
+  { id: "name", header: "Name", cellClassName: "mono text-xs", sortValue: (f) => f.qualified_name ?? f.name ?? f.id, searchText: (f) => `${f.qualified_name ?? ""} ${f.name ?? ""}`, cell: (f) => f.qualified_name ?? f.name ?? f.id },
+  { id: "params", header: "Params", cellClassName: "mono text-xs text-muted-foreground", searchText: (f) => String(parseMeta(f).parameters ?? ""), cell: (f) => String(parseMeta(f).parameters ?? "—") },
+  { id: "start", header: "Start", headerClassName: "text-right", cellClassName: "text-right tabular-nums", sortValue: (f) => f.start_line, cell: (f) => f.start_line ?? "—" },
+  { id: "end", header: "End", headerClassName: "text-right", cellClassName: "text-right tabular-nums", sortValue: (f) => f.end_line, cell: (f) => f.end_line ?? "—" },
+  { id: "flags", header: "Flags", cell: (f) => { const m = parseMeta(f); return <span className="space-x-1">{m.is_async === true && <Badge color="blue">async</Badge>}{m.is_anonymous === true && <Badge color="violet">anon</Badge>}</span>; } },
+  { id: "doc", header: "Docstring", cellClassName: "text-xs text-muted-foreground", searchText: (f) => String(parseMeta(f).docstring ?? ""), cell: (f) => { const d = String(parseMeta(f).docstring ?? ""); return <span title={d} className="line-clamp-1">{d.slice(0, 60) || "—"}</span>; } },
+];
+
+const clsCols: Column<ApiAstNode>[] = [
+  { id: "name", header: "Name", cellClassName: "mono text-xs", sortValue: (c) => c.name ?? "", searchText: (c) => c.name ?? "", cell: (c) => c.name ?? "—" },
+  { id: "qname", header: "Qualified Name", cellClassName: "mono text-xs text-muted-foreground", sortValue: (c) => c.qualified_name ?? "", searchText: (c) => c.qualified_name ?? "", cell: (c) => c.qualified_name ?? "—" },
+  { id: "start", header: "Start", headerClassName: "text-right", cellClassName: "text-right tabular-nums", sortValue: (c) => c.start_line, cell: (c) => c.start_line ?? "—" },
+  { id: "end", header: "End", headerClassName: "text-right", cellClassName: "text-right tabular-nums", sortValue: (c) => c.end_line, cell: (c) => c.end_line ?? "—" },
+  { id: "doc", header: "Docstring", cellClassName: "text-xs text-muted-foreground", searchText: (c) => String(parseMeta(c).docstring ?? ""), cell: (c) => { const d = String(parseMeta(c).docstring ?? ""); return <span title={d} className="line-clamp-1">{d.slice(0, 60) || "—"}</span>; } },
+];
+
+const impCols: Column<ApiAstNode>[] = [
+  { id: "module", header: "Module", cellClassName: "mono text-xs", sortValue: (i) => String(parseMeta(i).module ?? ""), searchText: (i) => String(parseMeta(i).module ?? ""), cell: (i) => String(parseMeta(i).module ?? "—") },
+  { id: "symbols", header: "Symbols", cellClassName: "mono text-xs", searchText: (i) => { const m = parseMeta(i); return Array.isArray(m.symbols) ? (m.symbols as string[]).join(", ") : (i.name ?? ""); }, cell: (i) => { const m = parseMeta(i); return Array.isArray(m.symbols) ? (m.symbols as string[]).join(", ") : (i.name ?? "—"); } },
+  { id: "alias", header: "Alias", cellClassName: "mono text-xs", cell: (i) => String(parseMeta(i).alias ?? "—") },
+  { id: "resolution", header: "Resolution", sortValue: (i) => String(parseMeta(i).resolution ?? ""), cell: (i) => { const r = String(parseMeta(i).resolution ?? "UNKNOWN"); return <Badge color={r === "INTERNAL" ? "blue" : "amber"}>{r}</Badge>; } },
+  { id: "target", header: "Target", cellClassName: "mono text-xs text-muted-foreground", searchText: (i) => String(parseMeta(i).target_file_path ?? ""), cell: (i) => String(parseMeta(i).target_file_path ?? "—") },
+];
+
+const varCols: Column<ApiAstNode>[] = [
+  { id: "name", header: "Name", cellClassName: "mono text-xs", sortValue: (v) => v.name ?? "", searchText: (v) => v.name ?? "", cell: (v) => v.name ?? "—" },
+  { id: "line", header: "Line", headerClassName: "text-right", cellClassName: "text-right tabular-nums", sortValue: (v) => v.start_line, cell: (v) => v.start_line ?? "—" },
+  { id: "scope", header: "Scope", sortValue: (v) => (parseMeta(v).is_module_level === true ? "module" : "local"), cell: (v) => parseMeta(v).is_module_level === true ? <Badge color="green">module</Badge> : <Badge color="gray">local</Badge> },
+  { id: "text", header: "Text", cellClassName: "mono text-xs text-muted-foreground", searchText: (v) => v.text ?? "", cell: (v) => <span className="line-clamp-1">{(v.text ?? "").slice(0, 70)}</span> },
+];
+
+const callCols: Column<ApiAstNode>[] = [
+  { id: "callee", header: "Callee", cellClassName: "mono text-xs", sortValue: (c) => c.name ?? "", searchText: (c) => c.name ?? "", cell: (c) => c.name ?? "—" },
+  { id: "enclosing", header: "Enclosing Fn", cellClassName: "mono text-xs text-muted-foreground", searchText: (c) => String(parseMeta(c).enclosing_fn ?? ""), cell: (c) => { const m = parseMeta(c); const e = typeof m.enclosing_fn === "string" ? m.enclosing_fn : null; return e ? shortId(e) : "module"; } },
+  { id: "line", header: "Line", headerClassName: "text-right", cellClassName: "text-right tabular-nums", sortValue: (c) => c.start_line, cell: (c) => c.start_line ?? "—" },
+  { id: "resolution", header: "Resolution", sortValue: (c) => String(parseMeta(c).resolution ?? ""), cell: (c) => { const r = String(parseMeta(c).resolution ?? "UNKNOWN"); return <Badge color={r === "UNRESOLVED" ? "amber" : r === "EXTERNAL" ? "gray" : "green"}>{r}</Badge>; } },
+];
+
+function shortId(s: string) { return s.length > 50 ? s.slice(0, 47) + "…" : s; }
 
 function Wrap({ children, onR, ts }: { children: React.ReactNode; onR: () => void; ts?: number }) {
-  return <div><SectionHeader title="AST Extraction" subtitle="Component 1.2 — Tree-sitter parsed entities per file" onRefresh={onR} updatedAt={ts} />{children}</div>;
+  return <div><SectionHeader title="AST Extraction" subtitle="Component 1.2 — Parsed entities per file (GET /files/{id})" onRefresh={onR} updatedAt={ts} />{children}</div>;
 }

@@ -1,14 +1,13 @@
 import { useV3rtex } from "@/lib/v3rtex/context";
+import type { EnabledMap, PageKey } from "@/lib/v3rtex/settings";
 import {
   LayoutDashboard, FolderTree, FileCode2, Link2, PhoneCall,
-  Database, Gauge, AlertTriangle, Network, TerminalSquare, Activity,
+  Database, Gauge, AlertTriangle, Network, TerminalSquare, Activity, Settings, Ban,
 } from "lucide-react";
 
-export type SectionKey =
-  | "overview" | "files" | "ast" | "symbols" | "calls"
-  | "graph" | "complexity" | "antipatterns" | "viz" | "api";
+export type SectionKey = PageKey | "settings";
 
-const nav: { key: SectionKey; label: string; icon: typeof LayoutDashboard }[] = [
+const nav: { key: PageKey; label: string; icon: typeof LayoutDashboard }[] = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
   { key: "files", label: "File Walker", icon: FolderTree },
   { key: "ast", label: "AST Extraction", icon: FileCode2 },
@@ -21,7 +20,9 @@ const nav: { key: SectionKey; label: string; icon: typeof LayoutDashboard }[] = 
   { key: "api", label: "API Tester", icon: TerminalSquare },
 ];
 
-export function Sidebar({ active, onChange }: { active: SectionKey; onChange: (k: SectionKey) => void }) {
+export function Sidebar({
+  active, onChange, enabled,
+}: { active: SectionKey; onChange: (k: SectionKey) => void; enabled: EnabledMap }) {
   const { status, retry } = useV3rtex();
   return (
     <aside className="w-64 bg-[var(--surface)] border-r border-border h-screen sticky top-0 flex flex-col">
@@ -40,6 +41,20 @@ export function Sidebar({ active, onChange }: { active: SectionKey; onChange: (k
         {nav.map((n) => {
           const Icon = n.icon;
           const isActive = active === n.key;
+          const isEnabled = enabled[n.key];
+          if (!isEnabled) {
+            return (
+              <div
+                key={n.key}
+                title="Disabled in Settings"
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm mb-0.5 text-zinc-400 cursor-not-allowed select-none"
+              >
+                <Icon size={15} />
+                <span className="line-through">{n.label}</span>
+                <Ban size={11} className="ml-auto" />
+              </div>
+            );
+          }
           return (
             <button
               key={n.key}
@@ -53,6 +68,16 @@ export function Sidebar({ active, onChange }: { active: SectionKey; onChange: (k
             </button>
           );
         })}
+        <div className="border-t border-border my-2" />
+        <button
+          onClick={() => onChange("settings")}
+          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm mb-0.5 transition-colors text-left ${
+            active === "settings" ? "bg-foreground text-background font-medium" : "text-zinc-700 hover:bg-muted"
+          }`}
+        >
+          <Settings size={15} />
+          Settings
+        </button>
       </nav>
       <div className="p-4 border-t border-border">
         <div className="flex items-center gap-2">
@@ -66,7 +91,7 @@ export function Sidebar({ active, onChange }: { active: SectionKey; onChange: (k
             <button onClick={retry} className="ml-auto text-[10px] px-2 py-0.5 rounded border border-border hover:bg-muted">Retry</button>
           )}
         </div>
-        <div className="text-[10px] text-muted-foreground mono mt-1.5">localhost:7331</div>
+        <div className="text-[10px] text-muted-foreground mono mt-1.5">127.0.0.1:7331</div>
       </div>
     </aside>
   );

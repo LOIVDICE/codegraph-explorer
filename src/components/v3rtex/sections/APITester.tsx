@@ -4,11 +4,13 @@ import { apiFetch } from "@/lib/v3rtex/api";
 import { Copy } from "lucide-react";
 
 const ENDPOINTS = [
-  { label: "GET /graph", path: "/graph", needsId: false },
-  { label: "GET /stats", path: "/stats", needsId: false },
-  { label: "GET /antipatterns", path: "/antipatterns", needsId: false },
-  { label: "GET /node/:id", path: "/node/", needsId: true },
-  { label: "GET /health", path: "/health", needsId: false },
+  { label: "GET / (index + stats)", path: "/", needsId: false },
+  { label: "GET /files", path: "/files", needsId: false },
+  { label: "GET /files/:id", path: "/files/", needsId: true },
+  { label: "GET /nodes", path: "/nodes", needsId: false },
+  { label: "GET /nodes/:id", path: "/nodes/", needsId: true },
+  { label: "GET /symbols", path: "/symbols", needsId: false },
+  { label: "GET /calls", path: "/calls", needsId: false },
 ];
 
 type HistoryItem = { ts: number; path: string; status: number; ms: number; size: number; raw: string };
@@ -50,7 +52,7 @@ export function APITester() {
             {ENDPOINTS.map((e) => <option key={e.path} value={e.path}>{e.label}</option>)}
           </select>
           {cur.needsId && (
-            <input value={nodeId} onChange={(e) => setNodeId(e.target.value)} placeholder="Node ID" className="w-full px-2 py-2 text-sm mono border border-border rounded bg-[var(--surface)] mb-3" />
+            <input value={nodeId} onChange={(e) => setNodeId(e.target.value)} placeholder="Resource ID (e.g. app.py.app.py..py)" className="w-full px-2 py-2 text-sm mono border border-border rounded bg-[var(--surface)] mb-3" />
           )}
           <button onClick={send} disabled={loading || (cur.needsId && !nodeId)} className="w-full px-3 py-2 text-sm bg-foreground text-background rounded disabled:opacity-50 hover:opacity-90 transition">
             {loading ? "Sending…" : "Send"}

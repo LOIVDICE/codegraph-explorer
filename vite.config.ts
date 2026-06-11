@@ -12,4 +12,17 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  vite: {
+    server: {
+      proxy: {
+        // The V3RTEX backend (127.0.0.1:7331) sends no CORS headers, so the
+        // browser blocks direct cross-origin calls. Proxy them same-origin.
+        "/v3rtex-api": {
+          target: "http://127.0.0.1:7331",
+          changeOrigin: true,
+          rewrite: (path: string) => path.replace(/^\/v3rtex-api/, ""),
+        },
+      },
+    },
+  },
 });

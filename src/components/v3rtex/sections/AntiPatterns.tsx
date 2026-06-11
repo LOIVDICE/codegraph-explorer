@@ -1,5 +1,6 @@
 import { useV3rtex } from "@/lib/v3rtex/context";
 import { Card, SectionHeader, Skeleton, ErrorCard, Badge, EmptyState, relTime } from "../ui";
+import { DataTable, type Column } from "../DataTable";
 import { ArrowRight, AlertOctagon, AlertTriangle, Info } from "lucide-react";
 
 type Cycle = string[];
@@ -57,50 +58,32 @@ export function AntiPatterns() {
 
         <Card>
           <Header icon={<AlertTriangle size={14} className="text-amber-600" />} title="God Objects" severity="MEDIUM" count={gods.length} note={`threshold: ${godThreshold}`} />
-          {gods.length === 0 ? <div className="p-4"><EmptyState title="No god objects detected." /></div> : (
-            <div className="overflow-auto max-h-[340px]">
-              <table className="w-full text-sm">
-                <thead className="text-xs text-muted-foreground border-b border-border sticky top-0 bg-[var(--surface)]">
-                  <tr><th className="text-left p-3">Node</th><th>Type</th><th className="text-right">Aff</th><th className="text-right">Eff</th><th className="text-right pr-3">Total</th></tr>
-                </thead>
-                <tbody>
-                  {[...gods].sort((a, b) => (b.total ?? 0) - (a.total ?? 0)).map((g, i) => (
-                    <tr key={i} className="border-b border-border last:border-0">
-                      <td className="p-3 mono text-xs">{g.name ?? g.id}</td>
-                      <td><Badge color="violet">{g.type ?? "—"}</Badge></td>
-                      <td className="text-right tabular-nums">{g.afferent ?? 0}</td>
-                      <td className="text-right tabular-nums">{g.efferent ?? 0}</td>
-                      <td className="text-right pr-3 tabular-nums font-semibold">{g.total ?? ((g.afferent ?? 0) + (g.efferent ?? 0))}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <div className="p-4">
+            <DataTable
+              rows={gods}
+              rowKey={(g, i) => g.id ?? i}
+              maxHeight="340px"
+              searchPlaceholder="Search god objects…"
+              emptyTitle="No god objects detected."
+              initialSort={{ columnId: "total", dir: "desc" }}
+              columns={godCols}
+            />
+          </div>
         </Card>
 
         <Card>
           <Header icon={<Info size={14} className="text-blue-600" />} title="Dead Code" severity="LOW" count={dead.length} />
           <div className="px-4 pt-3 text-xs text-muted-foreground">These functions have zero callers within the project. They may be entry points called externally — verify before removing.</div>
-          {dead.length === 0 ? <div className="p-4"><EmptyState title="No dead code detected." /></div> : (
-            <div className="overflow-auto max-h-[340px]">
-              <table className="w-full text-sm">
-                <thead className="text-xs text-muted-foreground border-b border-border sticky top-0 bg-[var(--surface)]">
-                  <tr><th className="text-left p-3">Function</th><th className="text-left">File</th><th className="text-right">Line</th><th className="text-right pr-3">Modified</th></tr>
-                </thead>
-                <tbody>
-                  {dead.map((d, i) => (
-                    <tr key={i} className="border-b border-border last:border-0">
-                      <td className="p-3 mono text-xs">{d.name ?? d.id}</td>
-                      <td className="mono text-xs text-muted-foreground truncate max-w-[200px]">{d.file_path ?? "—"}</td>
-                      <td className="text-right tabular-nums">{d.line_number ?? "—"}</td>
-                      <td className="text-right pr-3 text-xs text-muted-foreground">{relTime(d.last_modified)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <div className="p-4">
+            <DataTable
+              rows={dead}
+              rowKey={(d, i) => d.id ?? i}
+              maxHeight="340px"
+              searchPlaceholder="Search dead code…"
+              emptyTitle="No dead code detected."
+              columns={deadCols}
+            />
+          </div>
         </Card>
 
         <Card>
@@ -129,6 +112,21 @@ export function AntiPatterns() {
     </Wrap>
   );
 }
+
+const godCols: Column<GodObj>[] = [
+  { id: "node", header: "Node", cellClassName: "mono text-xs", sortValue: (g) => g.name ?? g.id, searchText: (g) => `${g.name ?? ""} ${g.id}`, cell: (g) => g.name ?? g.id },
+  { id: "type", header: "Type", sortValue: (g) => g.type ?? "", cell: (g) => <Badge color="violet">{g.type ?? "—"}</Badge> },
+  { id: "aff", header: "Aff", headerClassName: "text-right", cellClassName: "text-right tabular-nums", sortValue: (g) => g.afferent ?? 0, cell: (g) => g.afferent ?? 0 },
+  { id: "eff", header: "Eff", headerClassName: "text-right", cellClassName: "text-right tabular-nums", sortValue: (g) => g.efferent ?? 0, cell: (g) => g.efferent ?? 0 },
+  { id: "total", header: "Total", headerClassName: "text-right", cellClassName: "text-right tabular-nums font-semibold", sortValue: (g) => g.total ?? ((g.afferent ?? 0) + (g.efferent ?? 0)), cell: (g) => g.total ?? ((g.afferent ?? 0) + (g.efferent ?? 0)) },
+];
+
+const deadCols: Column<Dead>[] = [
+  { id: "fn", header: "Function", cellClassName: "mono text-xs", sortValue: (d) => d.name ?? d.id, searchText: (d) => `${d.name ?? ""} ${d.id}`, cell: (d) => d.name ?? d.id },
+  { id: "file", header: "File", cellClassName: "mono text-xs text-muted-foreground", sortValue: (d) => d.file_path ?? "", searchText: (d) => d.file_path ?? "", cell: (d) => <span className="truncate inline-block max-w-[200px] align-bottom">{d.file_path ?? "—"}</span> },
+  { id: "line", header: "Line", headerClassName: "text-right", cellClassName: "text-right tabular-nums", sortValue: (d) => d.line_number ?? 0, cell: (d) => d.line_number ?? "—" },
+  { id: "modified", header: "Modified", headerClassName: "text-right", cellClassName: "text-right text-xs text-muted-foreground", sortValue: (d) => Number(d.last_modified) || 0, cell: (d) => relTime(d.last_modified) },
+];
 
 function SeverityCount({ level, count }: { level: "HIGH" | "MEDIUM" | "LOW"; count: number }) {
   const color = level === "HIGH" ? "red" : level === "MEDIUM" ? "amber" : "blue";
