@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { V3rtexProvider } from "@/lib/v3rtex/context";
 import { usePageSettings, PAGES, type PageKey } from "@/lib/v3rtex/settings";
+import { usePageVersion } from "@/lib/v3rtex/page-state";
+import { SidePanelContext, PANEL_PAGES } from "@/lib/v3rtex/side-panel";
 import { Sidebar, type SectionKey } from "@/components/v3rtex/Sidebar";
 import { Card } from "@/components/v3rtex/ui";
 import { Overview } from "@/components/v3rtex/sections/Overview";
@@ -47,26 +49,52 @@ const SECTIONS: Record<PageKey, () => React.ReactNode> = {
 function Dashboard() {
   const { enabled, toggle, reset } = usePageSettings();
   const [section, setSection] = useState<SectionKey>("files");
+  // Sidebar slide state + portal target for per-page panels (ast, viz).
+  const [slid, setSlid] = useState(false);
+  const [panelEl, setPanelEl] = useState<HTMLElement | null>(null);
+  // Bumped by resetPageState (page refresh button) so the active section
+  // remounts with its default UI state in addition to the data refetch.
+  const version = usePageVersion(section);
 
   const isDisabled = section !== "settings" && !enabled[section];
 
+  const handleNav = (key: SectionKey) => {
+    if (key === section) {
+      // Page already open: never remount it — just slide to its panel.
+      if (PANEL_PAGES.has(key)) setSlid(true);
+      return;
+    }
+    setSection(key);
+    setSlid(PANEL_PAGES.has(key));
+  };
+
   return (
     <V3rtexProvider>
+      <SidePanelContext.Provider value={panelEl}>
       <div className="flex min-h-screen bg-background text-foreground">
-        <Sidebar active={section} onChange={setSection} enabled={enabled} />
-        <main className="flex-1 p-8 overflow-x-hidden">
+        <Sidebar
+          active={section}
+          onChange={handleNav}
+          enabled={enabled}
+          slid={slid}
+          onBack={() => setSlid(false)}
+          panelTitle={PAGES.find((p) => p.key === section)?.label ?? section}
+          panelRef={setPanelEl}
+        />
+        <main className="flex-1 px-8 pt-8 pb-5 overflow-x-hidden">
           {section === "settings" ? (
             <SettingsPage enabled={enabled} onToggle={toggle} onReset={reset} />
           ) : isDisabled ? (
             <DisabledNotice
               label={PAGES.find((p) => p.key === section)?.label ?? section}
-              onOpenSettings={() => setSection("settings")}
+              onOpenSettings={() => handleNav("settings")}
             />
           ) : (
-            SECTIONS[section]()
+            <div key={`${section}:${version}`}>{SECTIONS[section]()}</div>
           )}
         </main>
       </div>
+      </SidePanelContext.Provider>
     </V3rtexProvider>
   );
 }

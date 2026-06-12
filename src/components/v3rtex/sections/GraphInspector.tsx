@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useV3rtex } from "@/lib/v3rtex/context";
+import { usePageState, resetPageState } from "@/lib/v3rtex/page-state";
 import { Card, SectionHeader, Skeleton, ErrorCard, NodeTypeBadge, EdgeTypeBadge, GradeBadge, Badge, scoreToGrade } from "../ui";
 import { DataTable, type Column } from "../DataTable";
 import type { GraphEdge, GraphNode } from "@/lib/v3rtex/api";
@@ -7,10 +8,12 @@ import { X } from "lucide-react";
 
 export function GraphInspector() {
   const { graph, graphLoading, graphError, refreshGraph, graphUpdated } = useV3rtex();
-  const [tab, setTab] = useState<"nodes" | "edges">("nodes");
-  const [nodeFilters, setNodeFilters] = useState({ type: "all", grade: "all", lang: "all" });
-  const [edgeFilters, setEdgeFilters] = useState({ type: "all", resolved: "all" });
-  const [detail, setDetail] = useState<GraphNode | null>(null);
+  const [tab, setTab] = usePageState<"nodes" | "edges">("graph:tab", "nodes");
+  const [nodeFilters, setNodeFilters] = usePageState("graph:nodeFilters", { type: "all", grade: "all", lang: "all" });
+  const [edgeFilters, setEdgeFilters] = usePageState("graph:edgeFilters", { type: "all", resolved: "all" });
+  const [detail, setDetail] = usePageState<GraphNode | null>("graph:detail", null);
+  // The header reload button resets this page's UI params before refetching.
+  const refresh = () => { resetPageState("graph"); refreshGraph(); };
 
   const nodes = graph?.nodes ?? [];
   const edges = (graph?.edges ?? graph?.links ?? []) as GraphEdge[];
@@ -34,11 +37,11 @@ export function GraphInspector() {
   const nodeTypes = Array.from(new Set(nodes.map((n) => n.type ?? "").filter(Boolean)));
   const edgeTypeOpts = Array.from(new Set(edges.map((e) => e.type).filter(Boolean)));
 
-  if (graphLoading && !graph) return <Wrap onR={refreshGraph}><Skeleton rows={10} /></Wrap>;
-  if (graphError) return <Wrap onR={refreshGraph}><ErrorCard message={graphError} onRetry={refreshGraph} /></Wrap>;
+  if (graphLoading && !graph) return <Wrap onR={refresh}><Skeleton rows={10} /></Wrap>;
+  if (graphError) return <Wrap onR={refresh}><ErrorCard message={graphError} onRetry={refreshGraph} /></Wrap>;
 
   return (
-    <Wrap onR={refreshGraph} ts={graphUpdated}>
+    <Wrap onR={refresh} ts={graphUpdated}>
       <Card className="p-4 mb-3">
         <div className="flex border-b border-border -mx-4 -mt-4 mb-4 px-4">
           <button onClick={() => setTab("nodes")} className={`px-4 py-2.5 text-sm font-medium border-b-2 ${tab === "nodes" ? "border-foreground" : "border-transparent text-muted-foreground"}`}>Nodes ({filteredNodes.length})</button>
@@ -49,6 +52,7 @@ export function GraphInspector() {
           <DataTable
             rows={filteredNodes}
             rowKey={(n) => n.id}
+            stateKey="graph:nodes"
             maxHeight="60vh"
             searchPlaceholder="Search name or ID…"
             emptyTitle="No nodes match the filters."
@@ -72,6 +76,7 @@ export function GraphInspector() {
           <DataTable
             rows={filteredEdges}
             rowKey={(e, i) => (e.id ?? "") + i}
+            stateKey="graph:edges"
             maxHeight="60vh"
             searchPlaceholder="Search source / target…"
             emptyTitle="No edges match the filters."

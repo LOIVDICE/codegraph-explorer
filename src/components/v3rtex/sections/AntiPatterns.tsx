@@ -1,4 +1,5 @@
 import { useV3rtex } from "@/lib/v3rtex/context";
+import { resetPageState } from "@/lib/v3rtex/page-state";
 import { Card, SectionHeader, Skeleton, ErrorCard, Badge, EmptyState, relTime } from "../ui";
 import { DataTable, type Column } from "../DataTable";
 import { ArrowRight, AlertOctagon, AlertTriangle, Info } from "lucide-react";
@@ -11,8 +12,11 @@ type Chain = string[];
 export function AntiPatterns() {
   const { antipatterns, antipatternsLoading, antipatternsError, refreshAntipatterns, antipatternsUpdated } = useV3rtex();
 
-  if (antipatternsLoading && !antipatterns) return <Wrap onR={refreshAntipatterns}><Skeleton rows={10} /></Wrap>;
-  if (antipatternsError) return <Wrap onR={refreshAntipatterns}><ErrorCard message={antipatternsError} onRetry={refreshAntipatterns} /></Wrap>;
+  // The header reload button resets this page's UI params before refetching.
+  const refresh = () => { resetPageState("antipatterns"); refreshAntipatterns(); };
+
+  if (antipatternsLoading && !antipatterns) return <Wrap onR={refresh}><Skeleton rows={10} /></Wrap>;
+  if (antipatternsError) return <Wrap onR={refresh}><ErrorCard message={antipatternsError} onRetry={refreshAntipatterns} /></Wrap>;
 
   const ap = antipatterns ?? {};
   const cycles: Cycle[] = (ap.circular_dependencies as Cycle[]) ?? (ap.cycles as Cycle[]) ?? [];
@@ -27,7 +31,7 @@ export function AntiPatterns() {
   const low = dead.length;
 
   return (
-    <Wrap onR={refreshAntipatterns} ts={antipatternsUpdated}>
+    <Wrap onR={refresh} ts={antipatternsUpdated}>
       <Card className="p-4 mb-4 flex gap-3 items-center">
         <div className="text-sm font-semibold mr-auto">Severity Summary</div>
         <SeverityCount level="HIGH" count={high} />
@@ -62,6 +66,7 @@ export function AntiPatterns() {
             <DataTable
               rows={gods}
               rowKey={(g, i) => g.id ?? i}
+              stateKey="antipatterns:gods"
               maxHeight="340px"
               searchPlaceholder="Search god objects…"
               emptyTitle="No god objects detected."
@@ -78,6 +83,7 @@ export function AntiPatterns() {
             <DataTable
               rows={dead}
               rowKey={(d, i) => d.id ?? i}
+              stateKey="antipatterns:dead"
               maxHeight="340px"
               searchPlaceholder="Search dead code…"
               emptyTitle="No dead code detected."

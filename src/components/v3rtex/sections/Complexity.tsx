@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import { useV3rtex } from "@/lib/v3rtex/context";
+import { usePageState, resetPageState } from "@/lib/v3rtex/page-state";
 import { Card, SectionHeader, Skeleton, ErrorCard, GradeBadge, gradeColor, scoreToGrade } from "../ui";
 import { DataTable, type Column } from "../DataTable";
 import type { GraphEdge, GraphNode } from "@/lib/v3rtex/api";
@@ -8,8 +9,10 @@ import { X } from "lucide-react";
 
 export function Complexity() {
   const { graph, graphLoading, graphError, refreshGraph, graphUpdated } = useV3rtex();
-  const [filters, setFilters] = useState({ grade: "all", file: "" });
-  const [detail, setDetail] = useState<GraphNode | null>(null);
+  const [filters, setFilters] = usePageState("complexity:filters", { grade: "all", file: "" });
+  const [detail, setDetail] = usePageState<GraphNode | null>("complexity:detail", null);
+  // The header reload button resets this page's UI params before refetching.
+  const refresh = () => { resetPageState("complexity"); refreshGraph(); };
 
   const fns = useMemo(() => (graph?.nodes ?? []).filter((n) => n.type === "FUNCTION"), [graph]);
   const edges = (graph?.edges ?? graph?.links ?? []) as GraphEdge[];
@@ -27,11 +30,11 @@ export function Complexity() {
     return Object.entries(m).map(([k, v]) => ({ name: k, value: v }));
   }, [fns]);
 
-  if (graphLoading && !graph) return <Wrap onR={refreshGraph}><Skeleton rows={10} /></Wrap>;
-  if (graphError) return <Wrap onR={refreshGraph}><ErrorCard message={graphError} onRetry={refreshGraph} /></Wrap>;
+  if (graphLoading && !graph) return <Wrap onR={refresh}><Skeleton rows={10} /></Wrap>;
+  if (graphError) return <Wrap onR={refresh}><ErrorCard message={graphError} onRetry={refreshGraph} /></Wrap>;
 
   return (
-    <Wrap onR={refreshGraph} ts={graphUpdated}>
+    <Wrap onR={refresh} ts={graphUpdated}>
       <div className="grid grid-cols-[320px_1fr] gap-4 mb-4">
         <Card className="p-4">
           <div className="text-sm font-semibold mb-2">Grade Distribution</div>
@@ -71,6 +74,7 @@ export function Complexity() {
         <DataTable
           rows={filtered}
           rowKey={(f) => f.id}
+          stateKey="complexity:table"
           maxHeight="60vh"
           searchPlaceholder="Search function name or ID…"
           emptyTitle="No functions match."

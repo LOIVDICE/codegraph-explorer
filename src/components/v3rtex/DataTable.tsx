@@ -1,5 +1,6 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { ArrowDownUp, ArrowDown, ArrowUp, Search } from "lucide-react";
+import { usePageState } from "@/lib/v3rtex/page-state";
 import { EmptyState } from "./ui";
 
 export type Column<T> = {
@@ -27,7 +28,18 @@ type Props<T> = {
   extraControls?: ReactNode;
   /** Max table body height (scrolls). e.g. "400px" or "60vh". */
   maxHeight?: string;
+  /**
+   * Stretch to the parent's full height instead of using maxHeight: the
+   * table body grows to the container's bottom edge and scrolls inside it.
+   * The parent must constrain its own height (e.g. flex child with min-h-0).
+   */
+  fill?: boolean;
   initialSort?: { columnId: string; dir: "asc" | "desc" };
+  /**
+   * Namespaced page-state key (e.g. "files:table"). When set, search and
+   * sort survive switching pages and reset via the page refresh button.
+   */
+  stateKey?: string;
 };
 
 function compare(a: string | number | null | undefined, b: string | number | null | undefined): number {
@@ -40,12 +52,12 @@ function compare(a: string | number | null | undefined, b: string | number | nul
 
 export function DataTable<T>({
   columns, rows, rowKey, searchPlaceholder = "Search…", emptyTitle = "No rows to display.",
-  onRowClick, rowClassName, extraControls, maxHeight = "60vh", initialSort,
+  onRowClick, rowClassName, extraControls, maxHeight = "60vh", fill = false, initialSort, stateKey,
 }: Props<T>) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = usePageState(stateKey ? `${stateKey}.q` : null, "");
   const sortableCols = columns.filter((c) => c.sortValue);
-  const [sortId, setSortId] = useState<string>(initialSort?.columnId ?? "");
-  const [dir, setDir] = useState<"asc" | "desc">(initialSort?.dir ?? "asc");
+  const [sortId, setSortId] = usePageState<string>(stateKey ? `${stateKey}.sortId` : null, initialSort?.columnId ?? "");
+  const [dir, setDir] = usePageState<"asc" | "desc">(stateKey ? `${stateKey}.dir` : null, initialSort?.dir ?? "asc");
 
   const searchCols = columns.filter((c) => c.searchText);
 
@@ -72,7 +84,7 @@ export function DataTable<T>({
   };
 
   return (
-    <div>
+    <div className={fill ? "min-h-0 flex flex-col" : undefined}>
       <div className="flex gap-2 items-center flex-wrap mb-2">
         <div className="relative flex-1 min-w-[180px]">
           <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -113,7 +125,10 @@ export function DataTable<T>({
       {processed.length === 0 ? (
         <EmptyState title={emptyTitle} />
       ) : (
-        <div className="overflow-auto border border-border rounded-lg" style={{ maxHeight }}>
+        <div
+          className={`overflow-auto border border-border rounded-lg ${fill ? "min-h-0" : ""}`}
+          style={fill ? undefined : { maxHeight }}
+        >
           <table className="w-full text-sm">
             <thead className="text-xs text-muted-foreground border-b border-border sticky top-0 bg-[var(--surface)] z-10">
               <tr>

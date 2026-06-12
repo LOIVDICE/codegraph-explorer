@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePageState, resetPageState } from "@/lib/v3rtex/page-state";
 import { Card, SectionHeader, formatBytes } from "../ui";
 import { apiFetch } from "@/lib/v3rtex/api";
 import { Copy } from "lucide-react";
@@ -16,12 +17,12 @@ const ENDPOINTS = [
 type HistoryItem = { ts: number; path: string; status: number; ms: number; size: number; raw: string };
 
 export function APITester() {
-  const [endpoint, setEndpoint] = useState(ENDPOINTS[0].path);
-  const [nodeId, setNodeId] = useState("");
+  const [endpoint, setEndpoint] = usePageState("api:endpoint", ENDPOINTS[0].path);
+  const [nodeId, setNodeId] = usePageState("api:nodeId", "");
   const [loading, setLoading] = useState(false);
-  const [response, setResponse] = useState<{ status: number; ms: number; size: number; raw: string; data: unknown } | null>(null);
+  const [response, setResponse] = usePageState<{ status: number; ms: number; size: number; raw: string; data: unknown } | null>("api:response", null);
   const [error, setError] = useState<string | null>(null);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [history, setHistory] = usePageState<HistoryItem[]>("api:history", []);
 
   const cur = ENDPOINTS.find((e) => e.path === endpoint)!;
 
@@ -44,7 +45,7 @@ export function APITester() {
 
   return (
     <div>
-      <SectionHeader title="API Tester" subtitle="Manually invoke and inspect any V3RTEX L1 endpoint" />
+      <SectionHeader title="API Tester" subtitle="Manually invoke and inspect any V3RTEX L1 endpoint" onRefresh={() => resetPageState("api")} />
       <div className="grid grid-cols-[340px_1fr] gap-4">
         <Card className="p-4">
           <div className="text-sm font-semibold mb-3">Endpoint</div>

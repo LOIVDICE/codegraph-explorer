@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useV3rtex } from "@/lib/v3rtex/context";
+import { usePageState, resetPageState } from "@/lib/v3rtex/page-state";
+import { SidePanel } from "@/lib/v3rtex/side-panel";
 import { getFile, parseMeta, type ApiAstNode, type ApiFileDetail } from "@/lib/v3rtex/api";
 import { Card, SectionHeader, Skeleton, ErrorCard, Badge } from "../ui";
 import { DataTable, type Column } from "../DataTable";
@@ -7,20 +9,25 @@ import { DataTable, type Column } from "../DataTable";
 const TABS = ["Functions", "Classes", "Imports", "Variables", "Calls"] as const;
 type Tab = typeof TABS[number];
 
+/** Sentinel for the "All" entry at the top of the file list. */
+const ALL = "__ALL__";
+
 export function ASTExtraction() {
-  const { files: filesRes, refreshAll } = useV3rtex();
+  const { files: filesRes, astNodes: nodesRes, refreshAll } = useV3rtex();
   const files = useMemo(() => filesRes.data ?? [], [filesRes.data]);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("Functions");
+  const [selected, setSelected] = usePageState<string | null>("ast:selected", ALL);
+  const [tab, setTab] = usePageState<Tab>("ast:tab", "Functions");
   const [detail, setDetail] = useState<ApiFileDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [q, setQ] = useState("");
+  const [q, setQ] = usePageState("ast:q", "");
+  // The header reload button resets this page's UI params before refetching.
+  const refresh = () => { resetPageState("ast"); refreshAll(); };
 
-  useEffect(() => { if (!selected && files.length) setSelected(files[0].id); }, [files, selected]);
+  useEffect(() => { if (!selected && files.length) setSelected(files[0].id); }, [files, selected, setSelected]);
 
   useEffect(() => {
-    if (!selected) return;
+    if (!selected || selected === ALL) return;
     setLoading(true); setErr(null);
     getFile(selected).then((r) => {
       if (r.status >= 400) throw new Error(`HTTP ${r.status}`);
@@ -28,7 +35,12 @@ export function ASTExtraction() {
     }).catch((e) => setErr((e as Error).message ?? String(e))).finally(() => setLoading(false));
   }, [selected]);
 
-  const children = useMemo<ApiAstNode[]>(() => detail?.nodes ?? [], [detail]);
+  // "All" shows the full /nodes dataset already collected by the provider;
+  // a specific file shows its freshly fetched detail.
+  const children = useMemo<ApiAstNode[]>(
+    () => (selected === ALL ? nodesRes.data ?? [] : detail?.nodes ?? []),
+    [selected, nodesRes.data, detail],
+  );
 
   const fns = children.filter((c) => c.node_type === "function_definition");
   const cls = children.filter((c) => c.node_type === "class_definition");
@@ -38,26 +50,30 @@ export function ASTExtraction() {
 
   const filteredFiles = files.filter((f) => !q || (f.relative_path ?? "").toLowerCase().includes(q.toLowerCase()));
 
-  if (filesRes.loading && !filesRes.data) return <Wrap onR={refreshAll}><Skeleton rows={10} /></Wrap>;
-  if (filesRes.error) return <Wrap onR={refreshAll}><ErrorCard message={filesRes.error} onRetry={refreshAll} /></Wrap>;
+  if (filesRes.loading && !filesRes.data) return <Wrap onR={refresh}><Skeleton rows={10} /></Wrap>;
+  if (filesRes.error) return <Wrap onR={refresh}><ErrorCard message={filesRes.error} onRetry={refreshAll} /></Wrap>;
 
   return (
-    <Wrap onR={refreshAll} ts={filesRes.updated}>
-      <div className="grid grid-cols-[300px_1fr] gap-4 h-[calc(100vh-180px)]">
-        <Card className="flex flex-col overflow-hidden">
-          <div className="p-3 border-b border-border">
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter files…" className="w-full px-2 py-1.5 text-xs border border-border rounded bg-[var(--surface)]" />
-          </div>
-          <div className="flex-1 overflow-auto">
-            {filteredFiles.map((f) => (
-              <button key={f.id} onClick={() => setSelected(f.id)} className={`w-full text-left px-3 py-2 text-xs mono border-b border-border hover:bg-muted ${selected === f.id ? "bg-muted font-semibold" : ""}`}>
-                {f.relative_path ?? f.name}
-              </button>
-            ))}
-          </div>
-        </Card>
+    <Wrap onR={refresh} ts={filesRes.updated}>
+      {/* File list lives in the sidebar's sliding panel. */}
+      <SidePanel>
+        <div className="p-3 border-b border-border">
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter files…" className="w-full px-2 py-1.5 text-xs border border-border rounded bg-[var(--surface)]" />
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <button onClick={() => setSelected(ALL)} className={`w-full text-left px-3 py-2 text-xs mono border-b border-border hover:bg-muted ${selected === ALL ? "bg-muted font-semibold" : ""}`}>
+            All
+          </button>
+          {filteredFiles.map((f) => (
+            <button key={f.id} onClick={() => setSelected(f.id)} className={`w-full text-left px-3 py-2 text-xs mono border-b border-border hover:bg-muted ${selected === f.id ? "bg-muted font-semibold" : ""}`}>
+              {f.relative_path ?? f.name}
+            </button>
+          ))}
+        </div>
+      </SidePanel>
 
-        <Card className="flex flex-col overflow-hidden">
+      <div className="flex flex-col flex-1 min-h-0">
+        <Card className="flex flex-col overflow-hidden min-h-0">
           <div className="border-b border-border">
             <div className="flex">
               {TABS.map((t) => {
@@ -70,14 +86,14 @@ export function ASTExtraction() {
               })}
             </div>
           </div>
-          <div className="flex-1 overflow-auto p-4">
-            {loading ? <Skeleton rows={6} /> : err ? <ErrorCard message={err} /> : (
+          <div className="min-h-0 p-4 flex flex-col">
+            {loading && selected !== ALL ? <Skeleton rows={6} /> : err && selected !== ALL ? <ErrorCard message={err} /> : (
               <>
-                {tab === "Functions" && <DataTable rows={fns} rowKey={(n) => n.id} maxHeight="calc(100vh - 360px)" searchPlaceholder="Search functions…" emptyTitle="No functions in this file." columns={fnCols} />}
-                {tab === "Classes" && <DataTable rows={cls} rowKey={(n) => n.id} maxHeight="calc(100vh - 360px)" searchPlaceholder="Search classes…" emptyTitle="No classes in this file." columns={clsCols} />}
-                {tab === "Imports" && <DataTable rows={imps} rowKey={(n) => n.id} maxHeight="calc(100vh - 360px)" searchPlaceholder="Search imports…" emptyTitle="No imports in this file." columns={impCols} />}
-                {tab === "Variables" && <DataTable rows={vars} rowKey={(n) => n.id} maxHeight="calc(100vh - 360px)" searchPlaceholder="Search variables…" emptyTitle="No variables in this file." columns={varCols} />}
-                {tab === "Calls" && <DataTable rows={calls} rowKey={(n) => n.id} maxHeight="calc(100vh - 360px)" searchPlaceholder="Search calls…" emptyTitle="No calls in this file." columns={callCols} />}
+                {tab === "Functions" && <DataTable rows={fns} rowKey={(n) => n.id} fill searchPlaceholder="Search functions…" emptyTitle="No functions in this file." columns={fnCols} stateKey="ast:functions" />}
+                {tab === "Classes" && <DataTable rows={cls} rowKey={(n) => n.id} fill searchPlaceholder="Search classes…" emptyTitle="No classes in this file." columns={clsCols} stateKey="ast:classes" />}
+                {tab === "Imports" && <DataTable rows={imps} rowKey={(n) => n.id} fill searchPlaceholder="Search imports…" emptyTitle="No imports in this file." columns={impCols} stateKey="ast:imports" />}
+                {tab === "Variables" && <DataTable rows={vars} rowKey={(n) => n.id} fill searchPlaceholder="Search variables…" emptyTitle="No variables in this file." columns={varCols} stateKey="ast:variables" />}
+                {tab === "Calls" && <DataTable rows={calls} rowKey={(n) => n.id} fill searchPlaceholder="Search calls…" emptyTitle="No calls in this file." columns={callCols} stateKey="ast:calls" />}
               </>
             )}
           </div>
@@ -129,5 +145,7 @@ const callCols: Column<ApiAstNode>[] = [
 function shortId(s: string) { return s.length > 50 ? s.slice(0, 47) + "…" : s; }
 
 function Wrap({ children, onR, ts }: { children: React.ReactNode; onR: () => void; ts?: number }) {
-  return <div><SectionHeader title="AST Extraction" subtitle="Component 1.2 — Parsed entities per file (GET /files/{id})" onRefresh={onR} updatedAt={ts} />{children}</div>;
+  // Full height of the main area (100vh minus its p-8 top + bottom padding)
+  // so the content can end exactly at the page's bottom padding.
+  return <div className="h-[calc(100vh-64px)] flex flex-col"><SectionHeader title="AST Extraction" subtitle="Component 1.2 — Parsed entities per file (GET /files/{id})" onRefresh={onR} updatedAt={ts} />{children}</div>;
 }

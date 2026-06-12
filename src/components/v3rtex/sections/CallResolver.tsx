@@ -1,20 +1,25 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useV3rtex } from "@/lib/v3rtex/context";
+import { usePageState, resetPageState } from "@/lib/v3rtex/page-state";
 import { parseHops, type ApiCall } from "@/lib/v3rtex/api";
 import { Card, SectionHeader, Skeleton, ErrorCard, Badge } from "../ui";
 import { DataTable, type Column } from "../DataTable";
 
 export function CallResolver() {
   const { calls: callsRes, refreshAll } = useV3rtex();
-  const [resF, setResF] = useState("all");
+  const [resF, setResF] = usePageState("calls:resolution", "all");
+  // The header reload button resets this page's UI params before refetching.
+  const refresh = () => { resetPageState("calls"); refreshAll(); };
 
   const { all, resolved, unresolved, resolutions } = useMemo(() => {
     const all = callsRes.data ?? [];
+    // EXTERNAL calls are resolved — they just point outside the project.
+    const resolved = all.filter((c) => c.callee_node_id != null || c.resolution === "EXTERNAL");
     return {
       all,
-      resolved: all.filter((c) => c.callee_node_id != null),
-      unresolved: all.filter((c) => c.callee_node_id == null),
-      resolutions: Array.from(new Set(all.map((c) => c.resolution))).sort(),
+      resolved,
+      unresolved: all.filter((c) => c.callee_node_id == null && c.resolution !== "EXTERNAL"),
+      resolutions: Array.from(new Set(resolved.map((c) => c.resolution))).sort(),
     };
   }, [callsRes.data]);
 
@@ -23,11 +28,11 @@ export function CallResolver() {
     [resolved, resF]
   );
 
-  if (callsRes.loading && !callsRes.data) return <Wrap onR={refreshAll}><Skeleton rows={10} /></Wrap>;
-  if (callsRes.error) return <Wrap onR={refreshAll}><ErrorCard message={callsRes.error} onRetry={refreshAll} /></Wrap>;
+  if (callsRes.loading && !callsRes.data) return <Wrap onR={refresh}><Skeleton rows={10} /></Wrap>;
+  if (callsRes.error) return <Wrap onR={refresh}><ErrorCard message={callsRes.error} onRetry={refreshAll} /></Wrap>;
 
   return (
-    <Wrap onR={refreshAll} ts={callsRes.updated}>
+    <Wrap onR={refresh} ts={callsRes.updated}>
       <div className="grid grid-cols-3 gap-3 mb-4">
         <Card className="p-4"><div className="text-[10px] uppercase text-muted-foreground font-medium">Call Edges</div><div className="text-2xl font-semibold mt-1 tabular-nums">{all.length}</div></Card>
         <Card className="p-4"><div className="text-[10px] uppercase text-muted-foreground font-medium">Resolved</div><div className="text-2xl font-semibold mt-1 tabular-nums">{resolved.length}</div></Card>
@@ -39,6 +44,7 @@ export function CallResolver() {
         <DataTable
           rows={filteredR}
           rowKey={(c) => c.id}
+          stateKey="calls:resolved"
           maxHeight="420px"
           searchPlaceholder="Search caller / callee / call site…"
           emptyTitle="No resolved calls match."
@@ -57,6 +63,7 @@ export function CallResolver() {
         <DataTable
           rows={unresolved}
           rowKey={(c) => c.id}
+          stateKey="calls:unresolved"
           maxHeight="420px"
           searchPlaceholder="Search caller / call site…"
           emptyTitle="All calls resolved."
@@ -73,7 +80,7 @@ const resolvedCols: Column<ApiCall>[] = [
   { id: "callee", header: "Callee", cellClassName: "mono text-xs", sortValue: (c) => c.callee_qualified_name ?? c.callee_name ?? "", searchText: (c) => `${c.callee_qualified_name ?? ""} ${c.callee_name ?? ""}`, cell: (c) => c.callee_qualified_name ?? c.callee_name ?? "—" },
   { id: "site", header: "Call Site", cellClassName: "mono text-xs text-muted-foreground", searchText: (c) => c.call_site_text, cell: (c) => c.call_site_text },
   { id: "line", header: "Line", headerClassName: "text-right", cellClassName: "text-right tabular-nums", sortValue: (c) => c.call_site_line ?? 0, cell: (c) => c.call_site_line ?? "—" },
-  { id: "resolution", header: "Resolution", headerClassName: "text-center", cellClassName: "text-center", sortValue: (c) => c.resolution, cell: (c) => <Badge color={c.resolution === "DIRECT" || c.resolution === "INTERNAL" ? "green" : c.resolution === "IMPORTED" ? "blue" : "amber"}>{c.resolution}</Badge> },
+  { id: "resolution", header: "Resolution", headerClassName: "text-center", cellClassName: "text-center", sortValue: (c) => c.resolution, cell: (c) => <Badge color={c.resolution === "EXTERNAL" ? "amber" : c.resolution === "DIRECT" || c.resolution === "INTERNAL" ? "green" : c.resolution === "IMPORTED" ? "blue" : "gray"}>{c.resolution}</Badge> },
   { id: "hops", header: "Hops", headerClassName: "text-center", cellClassName: "text-center text-xs text-muted-foreground", sortValue: (c) => parseHops(c.hops).length, cell: (c) => { const h = parseHops(c.hops); return <span title={h.join(" → ")}>{h.length || "—"}</span>; } },
 ];
 

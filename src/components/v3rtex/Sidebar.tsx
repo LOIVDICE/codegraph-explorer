@@ -2,7 +2,7 @@ import { useV3rtex } from "@/lib/v3rtex/context";
 import type { EnabledMap, PageKey } from "@/lib/v3rtex/settings";
 import {
   LayoutDashboard, FolderTree, FileCode2, Link2, PhoneCall,
-  Database, Gauge, AlertTriangle, Network, TerminalSquare, Activity, Settings, Ban,
+  Database, Gauge, AlertTriangle, Network, TerminalSquare, Activity, Settings, Ban, ArrowLeft,
 } from "lucide-react";
 
 export type SectionKey = PageKey | "settings";
@@ -21,8 +21,18 @@ const nav: { key: PageKey; label: string; icon: typeof LayoutDashboard }[] = [
 ];
 
 export function Sidebar({
-  active, onChange, enabled,
-}: { active: SectionKey; onChange: (k: SectionKey) => void; enabled: EnabledMap }) {
+  active, onChange, enabled, slid, onBack, panelTitle, panelRef,
+}: {
+  active: SectionKey;
+  onChange: (k: SectionKey) => void;
+  enabled: EnabledMap;
+  /** When true the menu slides away and the page panel is shown. */
+  slid: boolean;
+  onBack: () => void;
+  panelTitle?: string;
+  /** Receives the page-panel DOM node pages portal their content into. */
+  panelRef: (el: HTMLElement | null) => void;
+}) {
   const { status, retry } = useV3rtex();
   return (
     <aside className="w-64 bg-[var(--surface)] border-r border-border h-screen sticky top-0 flex flex-col">
@@ -37,7 +47,10 @@ export function Sidebar({
           </div>
         </div>
       </div>
-      <nav className="flex-1 p-3 overflow-y-auto">
+      {/* Sliding area: menu <-> page panel. Header and footer stay fixed. */}
+      <div className="flex-1 relative overflow-hidden">
+        <div className={`absolute inset-0 flex w-[200%] transition-transform duration-300 ${slid ? "-translate-x-1/2" : ""}`}>
+      <nav className="w-1/2 p-3 overflow-y-auto">
         {nav.map((n) => {
           const Icon = n.icon;
           const isActive = active === n.key;
@@ -79,6 +92,18 @@ export function Sidebar({
           Settings
         </button>
       </nav>
+      <div className="w-1/2 flex flex-col min-h-0">
+        <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
+          <button onClick={onBack} title="Back to menu" className="p-1.5 rounded-md text-zinc-700 hover:bg-muted transition-colors">
+            <ArrowLeft size={15} />
+          </button>
+          <span className="text-sm font-medium truncate">{panelTitle}</span>
+        </div>
+        {/* Portal target: the active page renders its panel content here. */}
+        <div ref={panelRef} className="flex-1 min-h-0 flex flex-col overflow-hidden" />
+      </div>
+        </div>
+      </div>
       <div className="p-4 border-t border-border">
         <div className="flex items-center gap-2">
           <span className={`w-2 h-2 rounded-full ${

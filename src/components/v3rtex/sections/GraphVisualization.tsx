@@ -2,7 +2,9 @@ import { lazy, Suspense, useMemo, useRef, useState, useEffect } from "react";
 const ForceGraph2D = lazy(() => import("react-force-graph-2d").then((m) => ({ default: m.default })));
 const ForceGraph3D = lazy(() => import("react-force-graph-3d").then((m) => ({ default: m.default })));
 import { useV3rtex } from "@/lib/v3rtex/context";
-import { Card, SectionHeader, Skeleton, ErrorCard, NodeTypeBadge, GradeBadge, scoreToGrade, gradeColor } from "../ui";
+import { usePageState, resetPageState } from "@/lib/v3rtex/page-state";
+import { SidePanel } from "@/lib/v3rtex/side-panel";
+import { Card, SectionHeader, Skeleton, ErrorCard, GradeBadge, scoreToGrade, gradeColor } from "../ui";
 import type { GraphEdge, GraphNode } from "@/lib/v3rtex/api";
 
 const EDGE_TYPES = ["CALLS", "IMPORTS", "CONTAINS"];
@@ -27,13 +29,14 @@ export function GraphVisualization() {
   const ref = useRef<GraphRef | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
-  const [nodeTypes, setNodeTypes] = useState<Record<string, boolean>>(Object.fromEntries(NODE_TYPES.map((t) => [t, true])));
-  const [edgeTypes, setEdgeTypes] = useState<Record<string, boolean>>(Object.fromEntries(EDGE_TYPES.map((t) => [t, true])));
-  const [mode, setMode] = useState<"GRANULAR" | "MODULAR">("GRANULAR");
-  const [dim, setDim] = useState<"2D" | "3D">("2D");
-  const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<GraphNode | null>(null);
+  const [nodeTypes, setNodeTypes] = usePageState<Record<string, boolean>>("viz:nodeTypes", () => Object.fromEntries(NODE_TYPES.map((t) => [t, true])));
+  const [edgeTypes, setEdgeTypes] = usePageState<Record<string, boolean>>("viz:edgeTypes", () => Object.fromEntries(EDGE_TYPES.map((t) => [t, true])));
+  const [mode, setMode] = usePageState<"GRANULAR" | "MODULAR">("viz:mode", "GRANULAR");
+  const [dim, setDim] = usePageState<"2D" | "3D">("viz:dim", "2D");
+  const [search, setSearch] = usePageState("viz:search", "");
+  const [selected, setSelected] = usePageState<GraphNode | null>("viz:selected", null);
   const [hoverId, setHoverId] = useState<string | null>(null);
+  const [hoverLink, setHoverLink] = useState<unknown>(null);
 
   useEffect(() => {
     if (!wrapRef.current) return;
@@ -103,12 +106,15 @@ export function GraphVisualization() {
     }
   }, [searchHit, dim]);
 
-  if (graphError) return <Wrap onR={refreshGraph}><ErrorCard message={graphError} onRetry={refreshGraph} /></Wrap>;
+  // The header reload button resets this page's UI params before refetching.
+  const refresh = () => { resetPageState("viz"); refreshGraph(); };
+
+  if (graphError) return <Wrap onR={refresh}><ErrorCard message={graphError} onRetry={refreshGraph} /></Wrap>;
   // The graph is only composed once ALL endpoints are fully paginated, so it
   // renders exactly once with the complete dataset — never partial data.
   if (!graph) {
     return (
-      <Wrap onR={refreshGraph}>
+      <Wrap onR={refresh}>
         <Card className="p-8 mb-4">
           <div className="flex items-center gap-3">
             <span className="w-3 h-3 rounded-full bg-foreground animate-pulse" />
@@ -129,8 +135,8 @@ export function GraphVisualization() {
   const nodeColor = (n: GraphNode) => {
     if (selected && !neighborIds.has(n.id)) return "rgba(180,180,180,0.3)";
     if (searchHit && n.id !== searchHit.id) return "rgba(180,180,180,0.2)";
-    if (n.grade || n.health_score != null) return gradeColor(n.grade ?? scoreToGrade(n.health_score));
-    return NODE_COLOR[n.type ?? ""] ?? "#a1a1aa";
+    // Type color always matches the legend in the controls panel.
+    return NODE_COLOR[n.type ?? ""] ?? gradeColor(n.grade ?? scoreToGrade(n.health_score));
   };
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -152,7 +158,12 @@ export function GraphVisualization() {
     }) as any,
     linkDirectionalArrowLength: 3,
     linkDirectionalArrowRelPos: 1,
-    linkWidth: ((l: any) => hoverId && (l.source?.id === hoverId || l.target?.id === hoverId || l.source === hoverId || l.target === hoverId) ? 1.5 : 0.5) as any,
+    linkLabel: ((l: any) => l.type) as any,
+    linkWidth: ((l: any) => {
+      if (hoverLink === l) return 2;
+      return hoverId && (l.source?.id === hoverId || l.target?.id === hoverId || l.source === hoverId || l.target === hoverId) ? 1.5 : 0.5;
+    }) as any,
+    onLinkHover: ((l: any) => setHoverLink(l ?? null)) as any,
     onNodeClick: ((n: any) => setSelected(n)) as any,
     onNodeHover: ((n: any) => setHoverId(n?.id ?? null)) as any,
     onBackgroundClick: () => setSelected(null),
@@ -161,9 +172,79 @@ export function GraphVisualization() {
   /* eslint-enable @typescript-eslint/no-explicit-any */
 
   return (
-    <Wrap onR={refreshGraph} ts={graphUpdated}>
-      <Card className="relative overflow-hidden" >
-        <div ref={wrapRef} className="h-[calc(100vh-200px)] bg-[#fbfbf8] relative">
+    <Wrap onR={refresh} ts={graphUpdated}>
+      {/* Graph parameters + node details live in the sidebar's sliding panel. */}
+      <SidePanel>
+        <div className="p-3 space-y-3 text-xs border-b border-border">
+          <div>
+            <div className="font-semibold mb-1.5">View</div>
+            <div className="flex gap-1">
+              {(["2D", "3D"] as const).map((d) => (
+                <button key={d} onClick={() => setDim(d)} className={`flex-1 px-2 py-1 rounded border ${dim === d ? "bg-foreground text-background border-foreground" : "border-border"}`}>
+                  {d === "2D" ? "Flat 2D" : "3D Interactive"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="font-semibold mb-1.5">Mode</div>
+            <div className="flex gap-1">
+              {(["GRANULAR", "MODULAR"] as const).map((m) => (
+                <button key={m} onClick={() => setMode(m)} className={`flex-1 px-2 py-1 rounded border ${mode === m ? "bg-foreground text-background border-foreground" : "border-border"}`}>{m}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="font-semibold mb-1.5">Node Types</div>
+            {NODE_TYPES.map((t) => (
+              <label key={t} className={`flex items-center gap-2 py-0.5 cursor-pointer ${mode === "MODULAR" && t !== "FILE" ? "opacity-40" : ""}`}>
+                <input type="checkbox" checked={nodeTypes[t]} disabled={mode === "MODULAR" && t !== "FILE"} onChange={(e) => setNodeTypes({ ...nodeTypes, [t]: e.target.checked })} />
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: NODE_COLOR[t] }} />
+                <span className="mono">{t}</span>
+              </label>
+            ))}
+          </div>
+          <div>
+            <div className="font-semibold mb-1.5">Edge Types</div>
+            {EDGE_TYPES.map((t) => (
+              <label key={t} className="flex items-center gap-2 py-0.5 cursor-pointer">
+                <input type="checkbox" checked={edgeTypes[t]} onChange={(e) => setEdgeTypes({ ...edgeTypes, [t]: e.target.checked })} />
+                <span className="w-3 h-0.5" style={{ background: EDGE_COLOR[t] }} />
+                <span className="mono">{t}</span>
+              </label>
+            ))}
+          </div>
+          <button onClick={() => ref.current?.zoomToFit(400, 50)} className="w-full px-2 py-1 border border-border rounded hover:bg-muted">Reset Camera</button>
+        </div>
+
+        {/* Node details: empty until a node is clicked on the graph. */}
+        <div className="p-3 text-xs flex-1 overflow-y-auto">
+          <div className="flex items-center justify-between mb-2">
+            <div className="font-semibold">Node Details</div>
+            {selected && <button onClick={() => setSelected(null)} className="text-muted-foreground hover:text-foreground">×</button>}
+          </div>
+          {selected ? (
+            <div className="space-y-1.5">
+              <div className="font-semibold mono truncate mb-1" title={selected.name ?? selected.id}>{selected.name ?? selected.id}</div>
+              <Row k="Type" v={
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: NODE_COLOR[selected.type ?? ""] ?? "#a1a1aa" }} />
+                  <span className="mono">{selected.type}</span>
+                </span>
+              } />
+              <Row k="Grade" v={<GradeBadge grade={selected.grade ?? scoreToGrade(selected.health_score)} />} />
+              <Row k="Aff" v={String(selected.afferent_coupling ?? selected.in_degree ?? 0)} />
+              <Row k="Eff" v={String(selected.efferent_coupling ?? selected.out_degree ?? 0)} />
+              {selected.file_path && <Row k="File" v={<span className="mono break-all">{selected.file_path}</span>} />}
+            </div>
+          ) : (
+            <div className="text-muted-foreground">Click a node on the graph to inspect it.</div>
+          )}
+        </div>
+      </SidePanel>
+
+      <Card className="relative overflow-hidden flex-1 min-h-0">
+        <div ref={wrapRef} className="h-full bg-[#fbfbf8] relative">
           {data.nodes.length > 0 && (
             <Suspense fallback={null}>
               {dim === "2D" ? (
@@ -187,64 +268,6 @@ export function GraphVisualization() {
             </div>
           )}
 
-          {/* Controls overlay */}
-          <div className="absolute top-3 right-3 bg-[var(--surface)] border border-border rounded shadow-sm p-3 w-64 text-xs space-y-3">
-            <div>
-              <div className="font-semibold mb-1.5">View</div>
-              <div className="flex gap-1">
-                {(["2D", "3D"] as const).map((d) => (
-                  <button key={d} onClick={() => setDim(d)} className={`flex-1 px-2 py-1 rounded border ${dim === d ? "bg-foreground text-background border-foreground" : "border-border"}`}>
-                    {d === "2D" ? "Flat 2D" : "3D Interactive"}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <div className="font-semibold mb-1.5">Mode</div>
-              <div className="flex gap-1">
-                {(["GRANULAR", "MODULAR"] as const).map((m) => (
-                  <button key={m} onClick={() => setMode(m)} className={`flex-1 px-2 py-1 rounded border ${mode === m ? "bg-foreground text-background border-foreground" : "border-border"}`}>{m}</button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <div className="font-semibold mb-1.5">Node Types</div>
-              {NODE_TYPES.map((t) => (
-                <label key={t} className={`flex items-center gap-2 py-0.5 cursor-pointer ${mode === "MODULAR" && t !== "FILE" ? "opacity-40" : ""}`}>
-                  <input type="checkbox" checked={nodeTypes[t]} disabled={mode === "MODULAR" && t !== "FILE"} onChange={(e) => setNodeTypes({ ...nodeTypes, [t]: e.target.checked })} />
-                  <NodeTypeBadge type={t} />
-                </label>
-              ))}
-            </div>
-            <div>
-              <div className="font-semibold mb-1.5">Edge Types</div>
-              {EDGE_TYPES.map((t) => (
-                <label key={t} className="flex items-center gap-2 py-0.5 cursor-pointer">
-                  <input type="checkbox" checked={edgeTypes[t]} onChange={(e) => setEdgeTypes({ ...edgeTypes, [t]: e.target.checked })} />
-                  <span className="w-3 h-0.5" style={{ background: EDGE_COLOR[t] }} />
-                  <span className="mono">{t}</span>
-                </label>
-              ))}
-            </div>
-            <button onClick={() => ref.current?.zoomToFit(400, 50)} className="w-full px-2 py-1 border border-border rounded hover:bg-muted">Reset Camera</button>
-          </div>
-
-          {/* Selected info */}
-          {selected && (
-            <div className="absolute bottom-3 left-3 bg-[var(--surface)] border border-border rounded shadow-sm p-3 w-80 text-xs">
-              <div className="flex items-center justify-between mb-2">
-                <div className="font-semibold mono truncate">{selected.name ?? selected.id}</div>
-                <button onClick={() => setSelected(null)} className="text-muted-foreground hover:text-foreground">×</button>
-              </div>
-              <div className="space-y-1.5">
-                <Row k="Type" v={<NodeTypeBadge type={selected.type} />} />
-                <Row k="Grade" v={<GradeBadge grade={selected.grade ?? scoreToGrade(selected.health_score)} />} />
-                <Row k="Aff" v={String(selected.afferent_coupling ?? selected.in_degree ?? 0)} />
-                <Row k="Eff" v={String(selected.efferent_coupling ?? selected.out_degree ?? 0)} />
-                {selected.file_path && <Row k="File" v={<span className="mono">{selected.file_path}</span>} />}
-              </div>
-            </div>
-          )}
         </div>
       </Card>
     </Wrap>
@@ -256,5 +279,7 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
 }
 
 function Wrap({ children, onR, ts }: { children: React.ReactNode; onR: () => void; ts?: number }) {
-  return <div><SectionHeader title="Graph Visualization" subtitle="Component 1.9 — Force-directed view composed from /files, /nodes, /symbols and /calls" onRefresh={onR} updatedAt={ts} />{children}</div>;
+  // Full height of the main area (100vh minus its p-8 top + bottom padding)
+  // so the graph canvas ends exactly at the page's bottom padding.
+  return <div className="h-[calc(100vh-64px)] flex flex-col"><SectionHeader title="Graph Visualization" subtitle="Component 1.9 — Force-directed view composed from /files, /nodes, /symbols and /calls" onRefresh={onR} updatedAt={ts} />{children}</div>;
 }

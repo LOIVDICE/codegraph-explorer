@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useV3rtex } from "@/lib/v3rtex/context";
+import { usePageState, resetPageState } from "@/lib/v3rtex/page-state";
 import { Card, SectionHeader, Skeleton, ErrorCard, Badge, LangBadge, formatBytes, relTime } from "../ui";
 import { DataTable, type Column } from "../DataTable";
 import type { ApiFile } from "@/lib/v3rtex/api";
@@ -7,8 +8,10 @@ import { Copy } from "lucide-react";
 
 export function FileWalker() {
   const { files: filesRes, refreshAll } = useV3rtex();
-  const [lang, setLang] = useState("all");
-  const [statusF, setStatusF] = useState("all");
+  const [lang, setLang] = usePageState("files:lang", "all");
+  const [statusF, setStatusF] = usePageState("files:status", "all");
+  // The header reload button resets this page's UI params before refetching.
+  const refresh = () => { resetPageState("files"); refreshAll(); };
 
   const files = useMemo(() => filesRes.data ?? [], [filesRes.data]);
   const langCounts = useMemo(() => {
@@ -80,11 +83,11 @@ export function FileWalker() {
     },
   ], []);
 
-  if (filesRes.loading && !filesRes.data) return <Wrap onR={refreshAll}><Skeleton rows={10} /></Wrap>;
-  if (filesRes.error) return <Wrap onR={refreshAll}><ErrorCard message={filesRes.error} onRetry={refreshAll} /></Wrap>;
+  if (filesRes.loading && !filesRes.data) return <Wrap onR={refresh}><Skeleton rows={10} /></Wrap>;
+  if (filesRes.error) return <Wrap onR={refresh}><ErrorCard message={filesRes.error} onRetry={refreshAll} /></Wrap>;
 
   return (
-    <Wrap onR={refreshAll} ts={filesRes.updated}>
+    <Wrap onR={refresh} ts={filesRes.updated}>
       <Card className="p-4 mb-4">
         <div className="text-xs text-muted-foreground mb-2">{files.length} files by language</div>
         <div className="flex gap-2 flex-wrap">
@@ -107,6 +110,7 @@ export function FileWalker() {
         columns={columns}
         rows={filtered}
         rowKey={(f) => f.id}
+        stateKey="files:table"
         searchPlaceholder="Search file path or hash…"
         emptyTitle="No files match the current filters."
         extraControls={

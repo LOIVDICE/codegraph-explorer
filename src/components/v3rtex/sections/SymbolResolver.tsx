@@ -1,29 +1,44 @@
 import { useMemo } from "react";
 import { useV3rtex } from "@/lib/v3rtex/context";
+import { usePageState, resetPageState } from "@/lib/v3rtex/page-state";
 import { parseHops, type ApiSymbol } from "@/lib/v3rtex/api";
 import { Card, SectionHeader, Skeleton, ErrorCard, Badge } from "../ui";
 import { DataTable, type Column } from "../DataTable";
 
+/** Effective resolution: imports without a target node but with a known external module count as EXTERNAL. */
+const resOf = (s: ApiSymbol) => (s.target_node_id == null && s.external_module != null ? "EXTERNAL" : s.resolution);
+
 export function SymbolResolver() {
   const { symbols: symbolsRes, refreshAll } = useV3rtex();
 
+  const [resF, setResF] = usePageState("symbols:resolution", "all");
+
   const data = useMemo(() => {
     const all = symbolsRes.data ?? [];
-    const resolved = all.filter((s) => s.target_node_id != null);
-    const external = all.filter((s) => s.target_node_id == null && s.external_module != null);
+    // External imports are resolved — they just point outside the project.
+    const resolved = all.filter((s) => s.target_node_id != null || s.external_module != null);
     const unresolved = all.filter((s) => s.target_node_id == null && s.external_module == null);
-    return { all, resolved, external, unresolved };
+    const resolutions = Array.from(new Set(resolved.map(resOf))).sort();
+    return { all, resolved, unresolved, resolutions };
   }, [symbolsRes.data]);
 
-  if (symbolsRes.loading && !symbolsRes.data) return <Wrap onR={refreshAll}><Skeleton rows={10} /></Wrap>;
-  if (symbolsRes.error) return <Wrap onR={refreshAll}><ErrorCard message={symbolsRes.error} onRetry={refreshAll} /></Wrap>;
+  const filteredResolved = useMemo(
+    () => (resF === "all" ? data.resolved : data.resolved.filter((s) => resOf(s) === resF)),
+    [data.resolved, resF]
+  );
+
+  // The header reload button resets this page's UI params before refetching.
+  const refresh = () => { resetPageState("symbols"); refreshAll(); };
+
+  if (symbolsRes.loading && !symbolsRes.data) return <Wrap onR={refresh}><Skeleton rows={10} /></Wrap>;
+  if (symbolsRes.error) return <Wrap onR={refresh}><ErrorCard message={symbolsRes.error} onRetry={refreshAll} /></Wrap>;
 
   const total = data.all.length || 1;
   const rate = (data.resolved.length / total) * 100;
   const rateColor = rate > 90 ? "var(--grade-a)" : rate >= 70 ? "var(--grade-c)" : "var(--grade-f)";
 
   return (
-    <Wrap onR={refreshAll} ts={symbolsRes.updated}>
+    <Wrap onR={refresh} ts={symbolsRes.updated}>
       <Card className="p-5 mb-4">
         <div className="flex items-center justify-between mb-2">
           <div className="text-sm font-semibold">Resolution Rate</div>
@@ -36,18 +51,27 @@ export function SymbolResolver() {
 
       <Card className="p-4 mb-4">
         <Header label="Resolved Imports" count={data.resolved.length} />
-        <DataTable rows={data.resolved} rowKey={(s) => s.id} maxHeight="400px" searchPlaceholder="Search resolved imports…" emptyTitle="No resolved imports." columns={resolvedCols} />
-      </Card>
-
-      <Card className="p-4 mb-4">
-        <Header label="Unresolved — External Modules" count={data.external.length} />
-        <DataTable rows={data.external} rowKey={(s) => s.id} maxHeight="400px" searchPlaceholder="Search external imports…" emptyTitle="No external imports." columns={externalCols} rowClassName={() => "bg-amber-50/40"} />
+        <DataTable
+          rows={filteredResolved}
+          rowKey={(s) => s.id}
+          maxHeight="400px"
+          searchPlaceholder="Search resolved imports…"
+          emptyTitle="No resolved imports."
+          columns={resolvedCols}
+          stateKey="symbols:resolved"
+          extraControls={
+            <select value={resF} onChange={(e) => setResF(e.target.value)} className="px-2 py-1.5 text-xs border border-border rounded bg-[var(--surface)]">
+              <option value="all">All Resolutions</option>
+              {data.resolutions.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          }
+        />
       </Card>
 
       <Card className="p-4">
-        <Header label="Unresolved — Other" count={data.unresolved.length} />
+        <Header label="Unresolved" count={data.unresolved.length} />
         <div className="pb-3 text-xs text-muted-foreground">Imports without a resolved target node or a known external module.</div>
-        <DataTable rows={data.unresolved} rowKey={(s) => s.id} maxHeight="400px" searchPlaceholder="Search unresolved…" emptyTitle="Nothing unresolved." columns={unresolvedCols} rowClassName={() => "bg-red-50/40"} />
+        <DataTable rows={data.unresolved} rowKey={(s) => s.id} maxHeight="400px" searchPlaceholder="Search unresolved…" emptyTitle="Nothing unresolved." columns={unresolvedCols} rowClassName={() => "bg-red-50/40"} stateKey="symbols:unresolved" />
       </Card>
     </Wrap>
   );
@@ -57,16 +81,9 @@ const resolvedCols: Column<ApiSymbol>[] = [
   { id: "source", header: "Source File", cellClassName: "mono text-xs", sortValue: (s) => s.import_file_id, searchText: (s) => s.import_file_id, cell: (s) => fileLabel(s.import_file_id) },
   { id: "statement", header: "Statement", cellClassName: "mono text-xs text-muted-foreground", searchText: (s) => s.import_text, cell: (s) => s.import_text },
   { id: "symbol", header: "Symbol", cellClassName: "mono text-xs", sortValue: (s) => s.symbol_name, searchText: (s) => s.symbol_name, cell: (s) => s.symbol_name },
-  { id: "target", header: "Target", cellClassName: "mono text-xs", searchText: (s) => `${s.target_qualified_name ?? ""} ${s.target_name ?? ""}`, cell: (s) => s.target_qualified_name ?? s.target_name ?? shortId(s.target_node_id ?? "") },
-  { id: "resolution", header: "Resolution", sortValue: (s) => s.resolution, cell: (s) => <Badge color="blue">{s.resolution}</Badge> },
+  { id: "target", header: "Target", cellClassName: "mono text-xs", searchText: (s) => `${s.target_qualified_name ?? ""} ${s.target_name ?? ""} ${s.external_module ?? ""}`, cell: (s) => s.target_qualified_name ?? s.target_name ?? (s.external_module ? <Badge color="amber">{s.external_module}</Badge> : shortId(s.target_node_id ?? "")) },
+  { id: "resolution", header: "Resolution", sortValue: (s) => resOf(s), cell: (s) => <Badge color={resOf(s) === "EXTERNAL" ? "amber" : "blue"}>{resOf(s)}</Badge> },
   { id: "hops", header: "Hops", sortValue: (s) => parseHops(s.hops).length, cell: (s) => <HopsCell hops={s} /> },
-];
-
-const externalCols: Column<ApiSymbol>[] = [
-  { id: "source", header: "Source File", cellClassName: "mono text-xs", sortValue: (s) => s.import_file_id, searchText: (s) => s.import_file_id, cell: (s) => fileLabel(s.import_file_id) },
-  { id: "statement", header: "Statement", cellClassName: "mono text-xs text-muted-foreground", searchText: (s) => s.import_text, cell: (s) => s.import_text },
-  { id: "symbol", header: "Symbol", cellClassName: "mono text-xs", sortValue: (s) => s.symbol_name, searchText: (s) => s.symbol_name, cell: (s) => s.symbol_name },
-  { id: "module", header: "External Module", sortValue: (s) => s.external_module ?? "", searchText: (s) => s.external_module ?? "", cell: (s) => <Badge color="amber">{s.external_module}</Badge> },
 ];
 
 const unresolvedCols: Column<ApiSymbol>[] = [
