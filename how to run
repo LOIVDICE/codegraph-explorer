@@ -1,0 +1,7 @@
+This is a test web interface used for the V3rtex project
+It has been developped by an AI and is strictly a testing interface
+
+run the project by running:
+- npm run dev
+it opens a web app locally on http://localhost:8080/
+Calls V3rtex system on the internal API http://127.0.0.1:7331 (probably need to adjust the ip adress on backend depending on the lan setup)
