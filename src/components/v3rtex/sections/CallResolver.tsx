@@ -75,7 +75,16 @@ export function CallResolver() {
   );
 }
 
+const fileLabel = (s: string) => (s.length > 50 ? s.slice(0, 47) + "…" : s);
+
+const callerFileCol: Column<ApiCall> = {
+  id: "callerFile", header: "Caller File", cellClassName: "mono text-xs text-muted-foreground",
+  sortValue: (c) => c.caller_file_id, searchText: (c) => c.caller_file_id,
+  cell: (c) => <span title={c.caller_file_id}>{fileLabel(c.caller_file_id)}</span>,
+};
+
 const resolvedCols: Column<ApiCall>[] = [
+  callerFileCol,
   { id: "caller", header: "Caller", cellClassName: "mono text-xs", sortValue: (c) => c.caller_qualified_name ?? c.caller_name ?? "", searchText: (c) => `${c.caller_qualified_name ?? ""} ${c.caller_name ?? ""}`, cell: (c) => c.caller_qualified_name ?? c.caller_name ?? "—" },
   { id: "callee", header: "Callee", cellClassName: "mono text-xs", sortValue: (c) => c.callee_qualified_name ?? c.callee_name ?? "", searchText: (c) => `${c.callee_qualified_name ?? ""} ${c.callee_name ?? ""}`, cell: (c) => c.callee_qualified_name ?? c.callee_name ?? "—" },
   { id: "site", header: "Call Site", cellClassName: "mono text-xs text-muted-foreground", searchText: (c) => c.call_site_text, cell: (c) => c.call_site_text },
@@ -85,6 +94,7 @@ const resolvedCols: Column<ApiCall>[] = [
 ];
 
 const unresolvedCols: Column<ApiCall>[] = [
+  callerFileCol,
   { id: "caller", header: "Caller", cellClassName: "mono text-xs", sortValue: (c) => c.caller_qualified_name ?? c.caller_name ?? "", searchText: (c) => `${c.caller_qualified_name ?? ""} ${c.caller_name ?? ""}`, cell: (c) => c.caller_qualified_name ?? c.caller_name ?? "—" },
   { id: "site", header: "Call Site", cellClassName: "mono text-xs", searchText: (c) => c.call_site_text, cell: (c) => c.call_site_text },
   { id: "line", header: "Line", headerClassName: "text-right", cellClassName: "text-right tabular-nums", sortValue: (c) => c.call_site_line ?? 0, cell: (c) => c.call_site_line ?? "—" },
